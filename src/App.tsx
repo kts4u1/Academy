@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { AcademyPage } from './pages/AcademyPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { ComparePage } from './pages/ComparePage';
+import { DataInfoPage } from './pages/DataInfoPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { HomePage } from './pages/HomePage';
 import { MarketPage } from './pages/MarketPage';
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="favorites" element={<FavoritesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="neis" element={<NeisPage />} />
+        <Route path="data" element={<DataInfoPage />} />
         <Route path="*" element={<HomePage />} />
       </Route>
     </Routes>

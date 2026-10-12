@@ -148,7 +148,11 @@ function SampleBanner() {
   return (
     <div className="border-b border-line bg-surface-2">
       <p className="mx-auto max-w-app px-4 py-1.5 text-[12px] text-ink-2">
-        <b className="font-semibold text-ink">데모 데이터</b> · 학원명·주소·가격은 시세를 본뜬 예시예요.{' '}
+        <b className="font-semibold text-ink">데모 데이터</b> · 학원명·주소·가격·후기는 예시예요.{' '}
+        <Link to="/data" className="font-semibold text-accent underline-offset-2 hover:underline">
+          무엇이 실제인지 보기
+        </Link>
+        {' · '}
         <Link to="/neis" className="font-semibold text-accent underline-offset-2 hover:underline">
           교육청 실데이터 조회 →
         </Link>

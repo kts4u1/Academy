@@ -3,7 +3,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Histogram } from '../charts/Histogram';
 import { EmptyState, PageHeader, Section } from '../components/ui';
-import { districtsOf, EDU_OFFICES } from '../data/regions';
+import { districtsOf, EDU_OFFICES, neisZoneNames } from '../data/regions';
 import { manwon, shortMan, won } from '../lib/format';
 import { fetchNeisAcademies, NEIS_REALMS, neisErrorMessage, type NeisAcademy, type NeisQuery } from '../lib/neis';
 import { summarize } from '../lib/stats';
@@ -14,7 +14,7 @@ type SortMode = 'min_asc' | 'min_desc' | 'name';
 export function NeisPage() {
   const { settings } = useApp();
   const [officeSido, setOfficeSido] = useState(settings.home?.sido && EDU_OFFICES.some((o) => o.sido === settings.home!.sido) ? settings.home.sido : '서울');
-  const [sigungu, setSigungu] = useState(settings.home?.sigungu ?? '');
+  const [sigungu, setSigungu] = useState(settings.home ? neisZoneNames(settings.home)[0] : '');
   const [realm, setRealm] = useState('입시.검정 및 보습');
   const [name, setName] = useState('');
   const [page, setPage] = useState(1);
@@ -106,8 +106,8 @@ export function NeisPage() {
             </label>
             <input id="nx-gu" className="field" list="nx-gu-list" placeholder="예: 마포구" value={sigungu} onChange={(e) => setSigungu(e.target.value)} />
             <datalist id="nx-gu-list">
-              {districtsOf(officeSido).map((d) => (
-                <option key={d.sigungu} value={d.sigungu.split(' ')[0]} />
+              {Array.from(new Set(districtsOf(officeSido).flatMap(neisZoneNames))).map((zone) => (
+                <option key={zone} value={zone} />
               ))}
             </datalist>
           </div>
@@ -138,7 +138,7 @@ export function NeisPage() {
           {state.loading ? '불러오는 중…' : '교습비 조회'}
         </button>
         <p className="text-[12px] text-ink-3">
-          학원명은 일부만 적어도 찾아요. 경기도처럼 시 아래 구가 있는 곳은 시 이름(예: 성남시)으로 적으세요.
+          학원명은 일부만 적어도 찾아요. 시 아래 구가 있는 곳은 시 이름(예: 성남시)으로 적으세요. 인천 제물포구·영종구·서해구·검단구는 교육청 자료에 옛 이름(중구·동구·서구)으로 남은 학원도 있어요.
         </p>
       </form>
 

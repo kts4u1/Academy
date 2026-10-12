@@ -49,8 +49,25 @@ export function matchesMarket(point: PlanPoint, q: MarketQuery): boolean {
   return true;
 }
 
+const bySubjectCache = new WeakMap<Academy[], Map<string, PlanPoint[]>>();
+
+/** 과목별로 나눠 둔 요금제 목록 – 시세 조회는 항상 과목을 지정하므로 전체를 훑지 않는다 */
+function pointsOfSubject(academies: Academy[], subjectId: string): PlanPoint[] {
+  let index = bySubjectCache.get(academies);
+  if (!index) {
+    index = new Map();
+    for (const p of allPlanPoints(academies)) {
+      const list = index.get(p.plan.subjectId);
+      if (list) list.push(p);
+      else index.set(p.plan.subjectId, [p]);
+    }
+    bySubjectCache.set(academies, index);
+  }
+  return index.get(subjectId) ?? [];
+}
+
 export function marketPoints(academies: Academy[], q: MarketQuery): PlanPoint[] {
-  return allPlanPoints(academies).filter((p) => matchesMarket(p, q));
+  return pointsOfSubject(academies, q.subjectId).filter((p) => matchesMarket(p, q));
 }
 
 export interface PeerComparison {

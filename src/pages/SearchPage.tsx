@@ -36,6 +36,8 @@ function FilterGroup({ title, children }: { title: string; children: ReactNode }
 }
 
 interface PanelProps {
+  /** 사이드바와 모바일 시트에 패널이 동시에 있으므로 id 가 겹치지 않게 접두어를 다르게 준다 */
+  idPrefix: string;
   filters: SearchFilters;
   update: (patch: Partial<SearchFilters>) => void;
   hasOrigin: boolean;
@@ -44,13 +46,13 @@ interface PanelProps {
   metricUnit: string;
 }
 
-function FilterPanel({ filters, update, hasOrigin, homeLabel, presets, metricUnit }: PanelProps) {
+function FilterPanel({ idPrefix, filters, update, hasOrigin, homeLabel, presets, metricUnit }: PanelProps) {
   const toMan = (v: number | null) => (v == null ? '' : String(Math.round((v / 10000) * 10) / 10));
   const fromMan = (s: string) => (s.trim() === '' ? null : Math.round(Number(s) * 10000));
   return (
     <div>
       <FilterGroup title="지역">
-        <RegionPicker idPrefix="flt" sido={filters.sido} sigungu={filters.sigungu} onChange={(sido, sigungu) => update({ sido, sigungu })} />
+        <RegionPicker idPrefix={idPrefix} sido={filters.sido} sigungu={filters.sigungu} onChange={(sido, sigungu) => update({ sido, sigungu })} />
         <div className="mt-3">
           <span className="label">내 동네({homeLabel})에서 거리</span>
           <div className="flex flex-wrap gap-1.5">
@@ -92,11 +94,11 @@ function FilterPanel({ filters, update, hasOrigin, homeLabel, presets, metricUni
       </FilterGroup>
       <FilterGroup title={`가격 (${metricUnit} 기준, 만원)`}>
         <div className="flex items-center gap-2">
-          <label htmlFor="flt-pmin" className="sr-only">
+          <label htmlFor={`${idPrefix}-pmin`} className="sr-only">
             최소 금액
           </label>
           <input
-            id="flt-pmin"
+            id={`${idPrefix}-pmin`}
             inputMode="decimal"
             className="field"
             placeholder="최소"
@@ -104,11 +106,11 @@ function FilterPanel({ filters, update, hasOrigin, homeLabel, presets, metricUni
             onChange={(e) => update({ priceMin: fromMan(e.target.value) })}
           />
           <span className="text-ink-3">~</span>
-          <label htmlFor="flt-pmax" className="sr-only">
+          <label htmlFor={`${idPrefix}-pmax`} className="sr-only">
             최대 금액
           </label>
           <input
-            id="flt-pmax"
+            id={`${idPrefix}-pmax`}
             inputMode="decimal"
             className="field"
             placeholder="최대"
@@ -127,17 +129,17 @@ function FilterPanel({ filters, update, hasOrigin, homeLabel, presets, metricUni
         )}
       </FilterGroup>
       <FilterGroup title="조건">
-        <Toggle id="flt-shuttle" label="차량 운행" checked={filters.shuttle} onChange={(v) => update({ shuttle: v })} />
-        <Toggle id="flt-trial" label="체험 수업 가능" checked={filters.trial} onChange={(v) => update({ trial: v })} />
-        <Toggle id="flt-discount" label="할인 혜택 있음" desc="형제·선납·다과목 할인 등" checked={filters.discountOnly} onChange={(v) => update({ discountOnly: v })} />
+        <Toggle id={`${idPrefix}-shuttle`} label="차량 운행" checked={filters.shuttle} onChange={(v) => update({ shuttle: v })} />
+        <Toggle id={`${idPrefix}-trial`} label="체험 수업 가능" checked={filters.trial} onChange={(v) => update({ trial: v })} />
+        <Toggle id={`${idPrefix}-discount`} label="할인 혜택 있음" desc="형제·선납·다과목 할인 등" checked={filters.discountOnly} onChange={(v) => update({ discountOnly: v })} />
         <Toggle
-          id="flt-verified"
+          id={`${idPrefix}-verified`}
           label="교육청 신고가만"
           desc="교육청에 신고된 교습비 기준 학원"
           checked={filters.verifiedOnly}
           onChange={(v) => update({ verifiedOnly: v })}
         />
-        <Toggle id="flt-public" label="구립·공공시설만" desc="수영장·체육센터 등" checked={filters.publicOnly} onChange={(v) => update({ publicOnly: v })} />
+        <Toggle id={`${idPrefix}-public`} label="구립·공공시설만" desc="수영장·체육센터 등" checked={filters.publicOnly} onChange={(v) => update({ publicOnly: v })} />
       </FilterGroup>
       <FilterGroup title="평점">
         <div className="flex flex-wrap gap-1.5">
@@ -201,7 +203,7 @@ export function SearchPage() {
               </button>
             )}
           </div>
-          <FilterPanel filters={filters} update={update} hasOrigin={!!origin} homeLabel={homeLabel} presets={presets} metricUnit={METRIC_MAP[metric].label} />
+          <FilterPanel idPrefix="side" filters={filters} update={update} hasOrigin={!!origin} homeLabel={homeLabel} presets={presets} metricUnit={METRIC_MAP[metric].label} />
         </div>
       </aside>
 
@@ -270,8 +272,8 @@ export function SearchPage() {
             {activeCount > 0 && <span className="rounded-full bg-accent px-1.5 text-[11px] text-on-accent">{activeCount}</span>}
           </button>
           {filters.sido || filters.sigungu ? (
-            <button type="button" className="chip" aria-pressed="true" onClick={() => update({ sido: '', sigungu: '' })} aria-label={`${filters.sigungu || filters.sido} 지역 조건 해제`}>
-              {filters.sigungu || filters.sido}
+            <button type="button" className="chip" aria-pressed="true" onClick={() => update({ sido: '', sigungu: '' })} aria-label={`${filters.sido} ${filters.sigungu} 지역 조건 해제`}>
+              {filters.sigungu ? `${filters.sido} ${filters.sigungu}` : filters.sido}
               <X aria-hidden="true" className="h-3 w-3" />
             </button>
           ) : (
@@ -365,7 +367,7 @@ export function SearchPage() {
           </div>
         }
       >
-        <FilterPanel filters={filters} update={update} hasOrigin={!!origin} homeLabel={homeLabel} presets={presets} metricUnit={METRIC_MAP[metric].label} />
+        <FilterPanel idPrefix="sheet" filters={filters} update={update} hasOrigin={!!origin} homeLabel={homeLabel} presets={presets} metricUnit={METRIC_MAP[metric].label} />
       </Sheet>
     </div>
   );

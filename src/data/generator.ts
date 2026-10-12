@@ -262,8 +262,9 @@ function makeName(rng: Rng, subject: Subject, district: District, dong: string, 
   return `${pick(rng, PREFIXES)}${subject.nameSuffixes[0]} ${district.sigungu.split(' ').pop()}`;
 }
 
-function makeAcademy(rng: Rng, district: District, districtIdx: number, idx: number, used: Set<string>): Academy {
-  const id = `a${String(districtIdx).padStart(2, '0')}${String(idx).padStart(2, '0')}`;
+function makeAcademy(rng: Rng, district: District, idx: number, used: Set<string>): Academy {
+  // 시군구 코드 기반이라 지역 목록 순서가 바뀌어도 id 가 유지된다
+  const id = `a${district.code}-${idx}`;
   const subject = weightedPick(rng, SUBJECTS, (s) => SUBJECT_WEIGHTS[s.id] ?? 1);
   const group = subject.group;
   const isPublic = Boolean(subject.hasPublic) && rng() < 0.18;
@@ -348,13 +349,23 @@ function makeAcademy(rng: Rng, district: District, districtIdx: number, idx: num
   };
 }
 
+const METRO_SIDO = new Set(['부산', '대구', '인천', '광주', '대전', '울산', '세종']);
+
+/** 지역 규모에 맞춘 학원 수: 서울 자치구 > 광역시·경기 > 도 지역 시 > 군 */
+export function academyCount(district: District): number {
+  if (district.isGun) return 8;
+  if (district.sido === '서울') return 34;
+  if (METRO_SIDO.has(district.sido) || district.sido === '경기') return 18;
+  return 14;
+}
+
 export function generateAcademies(seed = SAMPLE_SEED): Academy[] {
   const rng = mulberry32(seed);
   const academies: Academy[] = [];
-  DISTRICTS.forEach((district, districtIdx) => {
+  for (const district of DISTRICTS) {
     const used = new Set<string>();
-    const count = district.sido === '서울' ? 34 : 24;
-    for (let i = 0; i < count; i++) academies.push(makeAcademy(rng, district, districtIdx, i, used));
-  });
+    const count = academyCount(district);
+    for (let i = 0; i < count; i++) academies.push(makeAcademy(rng, district, i, used));
+  }
   return academies;
 }

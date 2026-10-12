@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DiscountType, PriceReport } from '../types';
+import { findDistrict } from '../data/regions';
 import type { Metric } from '../lib/pricing';
 import { load, save } from './storage';
 
@@ -92,7 +93,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [calc, setCalc] = usePersistent<CalcItem[]>('calc', []);
   const [reports, setReports] = usePersistent<PriceReport[]>('reports', []);
   const [storedSettings, setSettings] = usePersistent<Settings>('settings', DEFAULT_SETTINGS);
-  const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...storedSettings }), [storedSettings]);
+  const settings = useMemo(() => {
+    const merged = { ...DEFAULT_SETTINGS, ...storedSettings };
+    // 지역 목록이 바뀌어 저장된 동네가 더는 없으면 기본값으로 되돌린다
+    if (merged.home && !findDistrict(merged.home.sido, merged.home.sigungu)) merged.home = DEFAULT_SETTINGS.home;
+    return merged;
+  }, [storedSettings]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 

@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- |
 | ![홈](docs/screenshots/home.png) | ![검색](docs/screenshots/search.png) | ![상세](docs/screenshots/detail.png) | ![비교](docs/screenshots/compare.png) | ![시세](docs/screenshots/market.png) |
 
-> 현재는 **시세를 본뜬 예시 데이터**(전국 44개 지역, 약 1,300개 학원)로 동작합니다. 학원명·주소·전화번호·가격은 모두 가상입니다.
+> 현재는 **시세를 본뜬 예시 데이터**(전국 17개 시·도 256개 시·군·구, 약 3,950개 학원)로 동작합니다. 학원명·상세 주소·전화번호·가격·후기는 모두 가상이고, 시·군·구 이름·좌표·동 이름만 실제 행정구역 데이터입니다.
 > 교과·예능 학원은 앱 안의 **교육청 실데이터** 화면에서 나이스(NEIS) 공개 API로 실제 신고 교습비를 조회할 수 있습니다.
 
 ## 왜 "월 금액" 비교로는 부족한가
@@ -93,6 +93,13 @@ npm run build        # 정적 배포용 빌드 → dist/
 npm run build:single # JS·CSS 를 HTML 하나에 넣은 데모 빌드 → dist-single/
 ```
 
+지역 목록을 최신 행정구역으로 다시 만들 때:
+
+```bash
+curl -LO https://raw.githubusercontent.com/vuski/admdongkor/master/ver20260701/HangJeongDong_ver20260701.geojson
+python3 scripts/build_districts.py HangJeongDong_ver20260701.geojson   # → src/data/districts.ts
+```
+
 `dist/` 는 해시 라우터를 쓰므로 GitHub Pages·Netlify·S3 등 어디에 올려도 새로고침이 깨지지 않습니다.
 
 ## 구조
@@ -102,7 +109,8 @@ src/
   types.ts               도메인 모델 (학원, 요금제, 부대비용, 할인, 제보)
   data/
     categories.ts        34개 과목 분류와 과목별 요금제 틀·부대비용 틀(시세 범위)
-    regions.ts           44개 시·군·구 좌표·지역 물가 지수, 시도교육청 코드
+    districts.ts         전국 256개 시·군·구 이름·대표 좌표·행정동 (자동 생성)
+    regions.ts           지역 물가 지수, 대표 학원가 동, 시도교육청 코드, 교육청 행정구역명 매핑
     generator.ts         시드 고정 예시 데이터 생성기
     index.ts             데이터 접근 계층 (백엔드 연동 시 이 파일만 교체)
   lib/

@@ -1,0 +1,10 @@
+{
+  "name": "학원비교 - 학원 검색 & 학원비 가격비교",
+  "short_name": "학원비교",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0b7a69",
+  "lang": "ko",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

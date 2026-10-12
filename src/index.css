@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 학원비교 디자인 토큰
+   Layout: 모바일 우선 단일 컬럼 + 하단 탭바, 데스크톱에서는 상단 내비 + 2열 그리드.
+   Color: 차가운 회청색 바탕 + 딥 틸(주요 동작) + 가격표 노랑(최저가 표시).
+   값은 Tailwind 투명도 문법을 위해 RGB 채널로 정의한다. */
+:root {
+  --bg: 243 246 248;
+  --surface: 255 255 255;
+  --surface-2: 236 240 244;
+  --ink: 20 32 48;
+  --ink-2: 74 86 104;
+  --ink-3: 118 130 146;
+  --line: 222 228 235;
+  --accent: 11 122 105;
+  --accent-soft: 222 242 238;
+  --on-accent: 255 255 255;
+  --tag: 255 217 74;
+  --tag-ink: 58 47 0;
+  --cheap: 18 125 72;
+  --cheap-soft: 224 245 233;
+  --pricey: 194 65 45;
+  --pricey-soft: 252 233 229;
+  --academic: 42 98 201;
+  --academic-soft: 228 237 252;
+  --sports: 214 94 36;
+  --sports-soft: 253 236 225;
+  --arts: 168 70 148;
+  --arts-soft: 248 231 244;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: 14 20 27;
+    --surface: 22 30 40;
+    --surface-2: 30 40 52;
+    --ink: 232 237 243;
+    --ink-2: 170 180 194;
+    --ink-3: 128 140 156;
+    --line: 44 55 68;
+    --accent: 53 194 169;
+    --accent-soft: 18 58 53;
+    --on-accent: 6 26 23;
+    --tag: 242 201 76;
+    --tag-ink: 43 34 0;
+    --cheap: 60 207 133;
+    --cheap-soft: 16 52 36;
+    --pricey: 255 122 102;
+    --pricey-soft: 62 28 24;
+    --academic: 110 154 240;
+    --academic-soft: 26 40 70;
+    --sports: 240 138 82;
+    --sports-soft: 64 36 20;
+    --arts: 215 122 192;
+    --arts-soft: 58 30 52;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: 14 20 27;
+  --surface: 22 30 40;
+  --surface-2: 30 40 52;
+  --ink: 232 237 243;
+  --ink-2: 170 180 194;
+  --ink-3: 128 140 156;
+  --line: 44 55 68;
+  --accent: 53 194 169;
+  --accent-soft: 18 58 53;
+  --on-accent: 6 26 23;
+  --tag: 242 201 76;
+  --tag-ink: 43 34 0;
+  --cheap: 60 207 133;
+  --cheap-soft: 16 52 36;
+  --pricey: 255 122 102;
+  --pricey-soft: 62 28 24;
+  --academic: 110 154 240;
+  --academic-soft: 26 40 70;
+  --sports: 240 138 82;
+  --sports-soft: 64 36 20;
+  --arts: 215 122 192;
+  --arts-soft: 58 30 52;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    font-size: 15px;
+    line-height: 1.55;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+  }
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-line bg-surface;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink-2 transition-colors;
+  }
+  .chip[aria-pressed='true'] {
+    @apply border-accent bg-accent-soft text-accent;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-on-accent hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+  .field {
+    @apply w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none;
+  }
+  .label {
+    @apply mb-1.5 block text-[13px] font-semibold text-ink-2;
+  }
+  .eyebrow {
+    @apply text-[12px] font-semibold uppercase tracking-wider text-ink-3;
+  }
+  .price-tag {
+    @apply inline-flex items-center gap-1 rounded-md bg-tag px-1.5 py-0.5 text-[11px] font-bold text-tag-ink;
+  }
+  .scroll-x {
+    @apply -mx-4 flex gap-2 overflow-x-auto px-4 pb-1;
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

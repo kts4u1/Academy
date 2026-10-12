@@ -68,6 +68,11 @@ export function NeisPage() {
           나이스 교육정보 개방 포털의 <b className="text-ink">학원교습소정보</b>를 바로 불러옵니다. 학원이 교육청에 신고한 1인당 교습비라서 실제 안내 가격의 기준이 돼요.
         </p>
         <p className="mt-1.5">수영장·태권도장·복싱장 같은 체육시설은 체육시설법 대상이라 이 자료에 없어요. 체육 종목은 학원 제공가·이용자 제보로 비교합니다.</p>
+        {__SINGLE_FILE__ && (
+          <p className="mt-2 rounded-lg bg-pricey-soft px-3 py-2 font-semibold text-pricey">
+            공유용 데모 링크에서는 외부 서버 연결이 막혀 있어 조회가 되지 않을 수 있어요. 저장소의 앱을 직접 실행하면 정상 동작합니다.
+          </p>
+        )}
         {!settings.neisKey && (
           <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-surface-2 px-3 py-2">
             <KeyRound aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-accent" />

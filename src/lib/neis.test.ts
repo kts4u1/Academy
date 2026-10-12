@@ -24,6 +24,14 @@ describe('parseTuition', () => {
     ]);
   });
 
+  it('괄호 안 쉼표가 있는 과정명', () => {
+    expect(parseTuition('HSK(3, 4):170000, HSK(5, 6):180000')).toEqual([
+      { course: 'HSK(3, 4)', price: 170000 },
+      { course: 'HSK(5, 6)', price: 180000 },
+    ]);
+    expect(parseTuition('독서논술(초,중등)1:150000')).toEqual([{ course: '독서논술(초,중등)1', price: 150000 }]);
+  });
+
   it('빈 값', () => {
     expect(parseTuition(' ')).toEqual([]);
     expect(parseTuition(null)).toEqual([]);

@@ -82,9 +82,12 @@ export function Histogram({ values, marker, median, format, tickFormat, bins = 1
         {median !== undefined && median >= x0 && median <= x1 && (
           <g pointerEvents="none">
             <line x1={sx(median)} x2={sx(median)} y1={pad.top - 4} y2={pad.top + innerH} stroke="rgb(var(--ink-3))" strokeWidth={1} strokeDasharray="0" />
+            {/* 표시 선과 가까우면 글자가 겹치므로 중앙값 글자는 생략 (선은 남긴다) */}
+            {!(marker && Math.abs(sx(marker.value) - sx(median)) < 52) && (
             <text x={sx(median)} y={pad.top - 8} textAnchor={sx(median) > width - 60 ? 'end' : sx(median) < 60 ? 'start' : 'middle'} fontSize={11} fill="rgb(var(--ink-3))">
               중앙값
             </text>
+            )}
           </g>
         )}
         {marker && marker.value >= x0 && marker.value <= x1 && (

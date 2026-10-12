@@ -61,10 +61,16 @@ export interface NeisAcademy {
   realm: string;
   courseGroup: string;
   course: string;
+  /** LE_CRSE_NM: 보습, 음악, 미술, 무용, 실용외국어 등 */
+  courseCategory: string;
+  /** LE_CRSE_LIST_NM: 대표 교습과정 */
+  courseList: string;
   tuitions: TuitionItem[];
   tuitionPublic: boolean;
   capacity: number | null;
   address: string;
+  /** 도로명 주소 앞부분 (구·동 판별용) */
+  roadAddress: string;
   phone: string;
   establishedAt: string;
   status: string;
@@ -80,7 +86,8 @@ export function parseTuition(text: string | null | undefined): TuitionItem[] {
   if (!text || !text.trim()) return [];
   const items: TuitionItem[] = [];
   // 과정명에 쉼표가 거의 없고, 금액은 콜론 뒤 숫자이므로 "이름:숫자" 쌍을 순서대로 찾는다.
-  const re = /\s*([^:,]+?)\s*:\s*([\d,]+)\s*(?:원)?\s*(?=,|$)/g;
+  // 과정명 안의 괄호 속 쉼표는 허용한다: 'HSK(3, 4):170000'
+  const re = /\s*((?:[^:,(]|\([^)]*\))+?)\s*:\s*([\d,]+)\s*(?:원)?\s*(?=,|$)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const price = Number(m[2].replace(/,/g, ''));
@@ -94,6 +101,14 @@ function ymd(raw: string | null | undefined): string {
   return /^\d{8}$/.test(v) ? `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}` : '';
 }
 
+/**
+ * 2026-07-01 광주광역시·전라남도가 전남광주통합특별시로 통합됐지만 학원 자료에는 옛 주소가 남아 있다.
+ * 화면에는 새 이름으로 보여준다. (시·군·구 이름은 그대로)
+ */
+export function normalizeLegacyAddress(address: string): string {
+  return address.replace(/^(광주광역시|전라남도)\s/, '전남광주통합특별시 ');
+}
+
 export function toNeisAcademy(row: NeisRawRow): NeisAcademy {
   return {
     id: `${row.ATPT_OFCDC_SC_CODE}-${row.ACA_ASNUM}`,
@@ -104,10 +119,15 @@ export function toNeisAcademy(row: NeisRawRow): NeisAcademy {
     realm: row.REALM_SC_NM?.trim() ?? '',
     courseGroup: row.LE_ORD_NM?.trim() ?? '',
     course: [row.LE_CRSE_NM, row.LE_CRSE_LIST_NM].filter(Boolean).join(' · '),
+    courseCategory: row.LE_CRSE_NM?.trim() ?? '',
+    courseList: row.LE_CRSE_LIST_NM?.trim() ?? '',
     tuitions: parseTuition(row.PSNBY_THCC_CNTNT),
     tuitionPublic: (row.THCC_OTHBC_YN ?? '').trim() === 'Y',
     capacity: row.TOFOR_SMTOT ?? row.DTM_RCPTN_ABLTY_NMPR_SMTOT ?? null,
-    address: [row.FA_RDNMA, row.FA_RDNDA].map((s) => (s ?? '').trim()).filter(Boolean).join(' ').replace(/\s+,/g, ',').replace(/^,\s*/, ''),
+    address: normalizeLegacyAddress(
+      [row.FA_RDNMA, row.FA_RDNDA].map((s) => (s ?? '').trim()).filter(Boolean).join(' ').replace(/\s+,/g, ',').replace(/^,\s*/, ''),
+    ),
+    roadAddress: (row.FA_RDNMA ?? '').trim(),
     phone: (row.FA_TELNO ?? '').trim(),
     establishedAt: ymd(row.ESTBL_YMD),
     status: (row.REG_STTUS_NM ?? '').trim(),
@@ -182,10 +202,37 @@ export async function fetchNeisAcademies(q: NeisQuery, fetchImpl: typeof fetch =
   return parseNeisResponse(await res.json(), sampleMode);
 }
 
+/** 인증키가 있을 때 한 번에 받을 수 있는 최대 건수 (API 제한) */
+export const NEIS_MAX_PAGE_SIZE = 1000;
+
+/**
+ * 조건에 맞는 학원을 여러 페이지에 걸쳐 모두 받는다. 인증키가 없으면 샘플 5건만 온다.
+ * maxRows 로 상한을 둬서 한 지역에 수천 건이 있어도 요청 수가 폭증하지 않게 한다.
+ */
+export async function fetchAllNeisAcademies(
+  q: Omit<NeisQuery, 'page' | 'pageSize'>,
+  options: { maxRows?: number; onProgress?: (loaded: number, total: number) => void; fetchImpl?: typeof fetch } = {},
+): Promise<NeisResult & { truncated: boolean }> {
+  const { maxRows = 6000, onProgress, fetchImpl = fetch } = options;
+  const first = await fetchNeisAcademies({ ...q, page: 1, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl);
+  const rows = [...first.rows];
+  onProgress?.(rows.length, first.total);
+  if (first.sampleMode) return { ...first, truncated: first.total > rows.length };
+  const limit = Math.min(first.total, maxRows);
+  for (let page = 2; rows.length < limit; page++) {
+    const next = await fetchNeisAcademies({ ...q, page, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl);
+    if (next.rows.length === 0) break;
+    rows.push(...next.rows);
+    onProgress?.(rows.length, first.total);
+  }
+  return { total: first.total, rows, sampleMode: false, truncated: first.total > rows.length };
+}
+
 export function neisErrorMessage(err: unknown): string {
   if (err instanceof NeisError) {
     if (err.code === 'ERROR-290') return '인증키가 올바르지 않습니다. 설정에서 인증키를 다시 확인하세요.';
     if (err.code === 'ERROR-337') return '오늘 조회 한도를 넘었습니다. 내일 다시 시도하세요.';
+    if (err.code === 'ERROR-336') return '한 번에 요청할 수 있는 건수(1,000건)를 넘었습니다.';
     return err.message;
   }
   return '알 수 없는 오류가 발생했습니다.';

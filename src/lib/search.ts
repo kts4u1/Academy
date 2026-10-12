@@ -1,5 +1,6 @@
 import type { Academy, AgeGroup, CategoryGroup, ClassType, PricePlan } from '../types';
 import { SUBJECT_MAP } from '../data/categories';
+import { SIDO_ALIASES } from '../data/regions';
 import { distanceKm } from './geo';
 import { comparePlanToPeers, sessionBucket, type PeerComparison } from './market';
 import { computeCost, type CostBreakdown, type CostOptions, type Metric } from './pricing';
@@ -84,6 +85,7 @@ export function matchesKeyword(academy: Academy, q: string): boolean {
     [
       academy.name,
       academy.region.sido,
+      ...(SIDO_ALIASES[academy.region.sido] ?? []),
       academy.region.sigungu,
       academy.region.dong,
       ...academy.features,

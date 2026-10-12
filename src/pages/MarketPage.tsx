@@ -7,6 +7,7 @@ import { MetricPicker } from '../components/MetricPicker';
 import { RegionPicker } from '../components/RegionPicker';
 import { ChipToggle, EmptyState, PageHeader, PriceLevelBadge, Section, Toggle } from '../components/ui';
 import { AGE_LABELS, AGE_ORDER, CLASS_TYPE_LABELS, GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
+import { SNAPSHOT_DATE, snapshotFor } from '../data/neisSnapshot';
 import { districtsOf, SIDOS } from '../data/regions';
 import { useAcademies } from '../hooks';
 import { formatMetric, manwon, shortMan, signedPercent, unitPrice, withJosa } from '../lib/format';
@@ -210,6 +211,11 @@ export function MarketPage() {
 
   const freqLabel = { once: '최초 1회', monthly: '매월', quarterly: '3개월마다', yearly: '매년', per_event: '행사·심사 때' } as const;
   const scopeLabel = sigungu || sido || '전국';
+  // 교육청 자료는 시·군·구 단위로 불러오므로, 구를 안 골랐으면 같은 시·도의 내 동네를 기본으로 쓴다
+  const snapshot = snapshotFor(sido || settings.home?.sido || '서울', sigungu || undefined, subjectId, age);
+  const neisSido = sido || settings.home?.sido || '서울';
+  const neisGu = sigungu || (settings.home?.sido === neisSido ? settings.home.sigungu : '');
+  const neisLink = `/neis?sido=${encodeURIComponent(neisSido)}${neisGu ? `&gu=${encodeURIComponent(neisGu)}` : ''}&subject=${subjectId}${age ? `&age=${age}` : ''}`;
   const searchLink = `/search?subject=${subjectId}${age ? `&age=${age}` : ''}${classType ? `&ct=${classType}` : ''}${sido ? `&sido=${encodeURIComponent(sido)}` : ''}${sigungu ? `&gu=${encodeURIComponent(sigungu)}` : ''}`;
 
   return (
@@ -311,6 +317,34 @@ export function MarketPage() {
               </Link>
             </div>
           </Section>
+
+          {snapshot && (
+            <div className="card mt-3 p-4">
+              <p className="text-[12px] font-semibold text-ink-3">
+                교육청 신고 교습비 · {snapshot.sigungu} · {SNAPSHOT_DATE} 조회
+              </p>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
+                <span className="text-[22px] font-bold tracking-tight">{manwon(snapshot.median)}</span>
+                <span className="num text-[13px] text-ink-2">
+                  중간 50% {manwon(snapshot.p25)}~{manwon(snapshot.p75)} · {snapshot.n}개 과정
+                </span>
+              </div>
+              <p className="mt-1 text-[12px] text-ink-3">실제 학원들이 교육청에 신고한 과정별 교습비 중앙값이에요. 위 시세는 예시 데이터예요.</p>
+            </div>
+          )}
+
+          {subject.group !== 'sports' && (
+            <Link
+              to={neisLink}
+              className="card mt-3 flex items-center gap-3 p-4 transition-shadow hover:shadow-md"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-bold">교육청 실제 교습비와 비교하기</span>
+                <span className="block text-[13px] text-ink-2">이 지역 {subject.name} 학원들이 교육청에 신고한 교습비를 불러와 위 예시 시세와 나란히 봅니다.</span>
+              </span>
+              <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-ink-3" />
+            </Link>
+          )}
 
           <Section title="안내받은 가격, 적정한가요?" desc="시간당 단가로 환산해서 시세와 비교합니다">
             <QuoteChecker points={points} subjectName={subject.name} />

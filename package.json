@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "neis:compare": "tsx scripts/neis-compare.ts"
   },
   "dependencies": {
     "lucide-react": "^1.55.0",
@@ -30,6 +31,7 @@
     "jsdom": "^29.1.1",
     "postcss": "^8.5.29",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vite-plugin-singlefile": "^2.3.3",

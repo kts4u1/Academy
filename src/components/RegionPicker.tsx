@@ -26,11 +26,19 @@ export function RegionPicker({ sido, sigungu, onChange, allowAll = true, idPrefi
           }}
         >
           {allowAll && <option value="">전국</option>}
-          {SIDOS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          {SIDOS.filter((s) => s !== '전남').map((s) =>
+            s === '광주' ? (
+              // 2026-07-01 통합: 시·도는 하나지만 사람들은 여전히 '광주'와 '전남'으로 찾는다
+              <optgroup key="전남광주" label="전남광주통합특별시">
+                <option value="광주">광주</option>
+                <option value="전남">전남</option>
+              </optgroup>
+            ) : (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ),
+          )}
         </select>
       </div>
       <div>

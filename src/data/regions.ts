@@ -9,7 +9,7 @@ export interface District {
   /** 공식 시·도 명칭 */
   sidoFull: string;
   sigungu: string;
-  /** 통계청 시군구 코드 */
+  /** 행정구역코드 앞 5자리 (시·군·구) */
   code: string;
   dongs: string[];
   lat: number;
@@ -26,7 +26,8 @@ export const EDU_OFFICES: { sido: string; code: string; office: string }[] = [
   { sido: '부산', code: 'C10', office: '부산광역시교육청' },
   { sido: '대구', code: 'D10', office: '대구광역시교육청' },
   { sido: '인천', code: 'E10', office: '인천광역시교육청' },
-  { sido: '광주', code: 'F10', office: '광주광역시교육청' },
+  // 2026-07-01 전남광주통합특별시교육청으로 통합됐지만 NEIS 는 옛 코드 F10·Q10 을 그대로 쓴다
+  { sido: '광주', code: 'F10', office: '전남광주통합특별시교육청(광주)' },
   { sido: '대전', code: 'G10', office: '대전광역시교육청' },
   { sido: '울산', code: 'H10', office: '울산광역시교육청' },
   { sido: '세종', code: 'I10', office: '세종특별자치시교육청' },
@@ -35,7 +36,7 @@ export const EDU_OFFICES: { sido: string; code: string; office: string }[] = [
   { sido: '충북', code: 'M10', office: '충청북도교육청' },
   { sido: '충남', code: 'N10', office: '충청남도교육청' },
   { sido: '전북', code: 'P10', office: '전북특별자치도교육청' },
-  { sido: '전남', code: 'Q10', office: '전라남도교육청' },
+  { sido: '전남', code: 'Q10', office: '전남광주통합특별시교육청(전남)' },
   { sido: '경북', code: 'R10', office: '경상북도교육청' },
   { sido: '경남', code: 'S10', office: '경상남도교육청' },
   { sido: '제주', code: 'T10', office: '제주특별자치도교육청' },
@@ -136,13 +137,39 @@ export function officeCodeOf(sido: string): string | undefined {
   return EDU_OFFICES.find((o) => o.sido === sido)?.code;
 }
 
-/** 2026년 7월 인천 행정체제 개편 전 이름. 교육청 자료에는 아직 옛 이름으로 등록된 학원이 많다. */
+/** 시·도 검색 별칭: '광주광역시', '광주특별시'(법정 약칭) 등으로 검색해도 찾게 한다 */
+export const SIDO_ALIASES: Record<string, string[]> = {
+  서울: ['서울특별시'],
+  부산: ['부산광역시'],
+  대구: ['대구광역시'],
+  인천: ['인천광역시'],
+  광주: ['광주광역시', '광주특별시', '전남광주', '전남광주통합특별시'],
+  대전: ['대전광역시'],
+  울산: ['울산광역시'],
+  세종: ['세종특별자치시'],
+  경기: ['경기도'],
+  강원: ['강원도', '강원특별자치도'],
+  충북: ['충청북도'],
+  충남: ['충청남도'],
+  전북: ['전라북도', '전북특별자치도'],
+  전남: ['전라남도', '전남광주', '전남광주통합특별시'],
+  경북: ['경상북도'],
+  경남: ['경상남도'],
+  제주: ['제주도', '제주특별자치도'],
+};
+
+// 2026-07-01 인천 행정체제 개편: 중구·동구·서구 → 제물포구·영종구·서해구·검단구.
+// 교육청 학원 자료에는 옛 구 이름으로 남은 곳이 많아서, 옛 이름으로도 조회한 뒤 주소의 동으로 나눈다.
 const INCHEON_FORMER: Record<string, string[]> = {
   제물포구: ['중구', '동구'],
   영종구: ['중구'],
   서해구: ['서구'],
   검단구: ['서구'],
 };
+/** 영종구가 된 옛 중구 영종·용유 지역 법정동 */
+const YEONGJONG_DONGS = ['운서동', '운남동', '운북동', '중산동', '을왕동', '남북동', '덕교동', '무의동'];
+/** 검단구가 된 옛 서구 검단 지역 법정동 */
+const GEOMDAN_DONGS = ['검단동', '대곡동', '불로동', '마전동', '금곡동', '오류동', '왕길동', '당하동', '원당동', '아라동'];
 
 /**
  * NEIS 학원교습소정보의 행정구역명(ADMST_ZONE_NM) 후보.
@@ -154,4 +181,42 @@ export function neisZoneNames(district: Pick<District, 'sido' | 'sigungu'>): str
   if (city) return [city[1]];
   if (district.sido === '인천' && INCHEON_FORMER[district.sigungu]) return [district.sigungu, ...INCHEON_FORMER[district.sigungu]];
   return [district.sigungu];
+}
+
+export interface NeisLocated {
+  /** ADMST_ZONE_NM */
+  sigungu: string;
+  roadAddress: string;
+  address: string;
+}
+
+/**
+ * 교육청 자료를 앱의 시·군·구 하나에 맞게 거른다.
+ * - 일반구: 교육청 자료는 시 단위라서 도로명 주소의 구 이름으로 거른다.
+ *   (새로 생긴 화성시 일반구처럼 주소에 구가 없으면 시 전체를 돌려주고 cityWide 로 알린다)
+ * - 인천: 옛 중구·서구 학원을 주소의 법정동으로 새 구에 나눠 담는다.
+ */
+export function filterNeisForDistrict<T extends NeisLocated>(rows: T[], district: Pick<District, 'sido' | 'sigungu'>): { rows: T[]; cityWide: boolean } {
+  const city = district.sigungu.match(/^(\S+시) (\S+구)$/);
+  if (city) {
+    const gu = city[2];
+    const withGu = rows.filter((r) => /\S+구\s/.test(r.roadAddress.replace(/^\S+\s\S+시\s/, '')));
+    if (withGu.length === 0) return { rows, cityWide: true };
+    return { rows: rows.filter((r) => r.roadAddress.includes(` ${gu} `) || r.address.includes(` ${gu} `)), cityWide: false };
+  }
+  if (district.sido === '인천' && INCHEON_FORMER[district.sigungu]) {
+    const inDongs = (r: T, dongs: string[]) => dongs.some((d) => r.address.includes(d));
+    const target = district.sigungu;
+    return {
+      cityWide: false,
+      rows: rows.filter((r) => {
+        if (r.sigungu === target) return true;
+        if (r.sigungu === '중구') return target === '영종구' ? inDongs(r, YEONGJONG_DONGS) : target === '제물포구' && !inDongs(r, YEONGJONG_DONGS);
+        if (r.sigungu === '동구') return target === '제물포구';
+        if (r.sigungu === '서구') return target === '검단구' ? inDongs(r, GEOMDAN_DONGS) : target === '서해구' && !inDongs(r, GEOMDAN_DONGS);
+        return false;
+      }),
+    };
+  }
+  return { rows, cityWide: false };
 }

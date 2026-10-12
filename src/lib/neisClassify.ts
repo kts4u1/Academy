@@ -33,12 +33,13 @@ export interface ClassifiedCourse {
 const SUBJECT_RULES: { id: string; re: RegExp }[] = [
   { id: 'essay', re: /(역사|한국사|학국사|세계사|사회)\S{0,3}논술|논술\S{0,3}(역사|한국사|세계사)|역사하기/ },
   { id: 'math', re: /수학|매쓰|math|연산|사고력|팩토|소마|CMS|해법수학|와이즈만|주산|암산/i },
-  { id: 'english', re: /영어|english|잉글|토익|토플|텝스|toeic|toefl|teps|파닉스|phonics|그래머|grammar|원어민/i },
+  // '원어민중국어'가 영어가 되지 않도록 제2외국어를 영어보다 먼저 본다
   { id: 'lang2', re: /중국어|일본어|HSK|JLPT|JPT|스페인어|독일어|프랑스어|러시아어|베트남어|아랍어/i },
+  { id: 'english', re: /영어|english|잉글|토익|토플|텝스|toeic|toefl|teps|파닉스|phonics|그래머|grammar|원어민/i },
   { id: 'science', re: /과학|물리|화학|생명과학|생물|지구과학|사이언스|science|과탐/i },
   { id: 'social', re: /사회|역사|한국사|세계사|지리|윤리|사탐|정치|경제/ },
-  // '외국어'의 '국어'는 제외
-  { id: 'korean', re: /(?<!외)국어|문학|비문학|받아쓰기|한글/ },
+  // '외국어'·'중국어'의 '국어'는 제외
+  { id: 'korean', re: /(?<![외중])국어|문학|비문학|받아쓰기|한글/ },
   { id: 'essay', re: /논술|독서|글쓰기|토론|문해/ },
   { id: 'coding', re: /코딩|컴퓨터|프로그래밍|파이썬|python|스크래치|엔트리|로봇|소프트웨어|아두이노|ITQ|컴활|정보교과|정보올림/i },
   { id: 'allsubj', re: /종합|전과목|국영수|국\.영\.수|국영수사과/ },
@@ -49,8 +50,9 @@ const SUBJECT_RULES: { id: string; re: RegExp }[] = [
   { id: 'vocal', re: /보컬|성악|발성|노래|vocal/i },
   { id: 'art', re: /미술|드로잉|소묘|수채화|유화|서양화|동양화|한국화|디자인|웹툰|만화|일러스트|조소|크로키/ },
   { id: 'ballet', re: /발레|ballet|무용/i },
-  { id: 'dance', re: /댄스|방송|힙합|k-?pop|케이팝|스트릿|걸스힙합|치어/i },
+  // '방송연기'는 연기
   { id: 'acting', re: /연기|뮤지컬|연극|acting/i },
+  { id: 'dance', re: /댄스|방송|힙합|k-?pop|케이팝|스트릿|걸스힙합|치어/i },
 ];
 
 // 교육청 교습과정 분류(LE_CRSE_NM) → 과목. 과정 이름과 학원 이름으로도 못 찾았을 때만 쓴다.
@@ -108,14 +110,15 @@ function matchSubjects(text: string | undefined): string[] {
   return found;
 }
 
-function matchSubject(text: string | undefined): string | null {
-  return matchSubjects(text)[0] ?? null;
-}
-
 /** 학원 이름·대표 과정에서 짐작한 과목 (과정 이름에 과목이 없을 때 쓴다) */
 export function academySubject(ctx: CourseContext): string | null {
-  const fromName = matchSubject(ctx.academyName) ?? matchSubject(ctx.courseList);
-  if (fromName) return fromName;
+  // 'OO수학영어교습소'처럼 이름에 과목이 여럿이면 과정이 어느 과목인지 알 수 없다
+  const inName = matchSubjects(ctx.academyName);
+  if (inName.length > 1) return null;
+  if (inName.length === 1) return inName[0];
+  const inList = matchSubjects(ctx.courseList);
+  if (inList.length === 1) return inList[0];
+  if (inList.length > 1) return null;
   for (const rule of CATEGORY_RULES) if (ctx.courseCategory && rule.re.test(ctx.courseCategory)) return rule.id;
   // 'OO음악교습소'의 '초급/중급'은 대부분 피아노지만 확신할 수 없으므로 비워 둔다.
   return null;

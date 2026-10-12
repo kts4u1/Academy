@@ -18,6 +18,8 @@ export interface District {
   priceIndex: number;
   /** 자치구·시·일반구가 아닌 군 지역 */
   isGun: boolean;
+  /** 일반구·인천 새 구의 전체 동 이름 */
+  dongIndex?: string[];
 }
 
 /** 시·도 이름 → NEIS 시도교육청 코드 */
@@ -143,7 +145,7 @@ export const SIDO_ALIASES: Record<string, string[]> = {
   부산: ['부산광역시'],
   대구: ['대구광역시'],
   인천: ['인천광역시'],
-  광주: ['광주광역시', '광주특별시', '전남광주', '전남광주통합특별시'],
+  광주: ['광주광역시', '광주특별시'],
   대전: ['대전광역시'],
   울산: ['울산광역시'],
   세종: ['세종특별자치시'],
@@ -152,33 +154,44 @@ export const SIDO_ALIASES: Record<string, string[]> = {
   충북: ['충청북도'],
   충남: ['충청남도'],
   전북: ['전라북도', '전북특별자치도'],
-  전남: ['전라남도', '전남광주', '전남광주통합특별시'],
+  전남: ['전라남도'],
   경북: ['경상북도'],
   경남: ['경상남도'],
   제주: ['제주도', '제주특별자치도'],
 };
 
+/**
+ * 통합 시·도 이름. '전남광주'는 '광주'·'전남'을 모두 품고 있어 부분 일치로 넣으면
+ * '광주' 검색에 전남 학원이 섞이므로, 검색어가 이 이름과 정확히 같을 때만 쓴다.
+ */
+export const MERGED_SIDO_NAMES: Record<string, string[]> = {
+  전남광주: ['광주', '전남'],
+  전남광주통합특별시: ['광주', '전남'],
+};
+
 // 2026-07-01 인천 행정체제 개편: 중구·동구·서구 → 제물포구·영종구·서해구·검단구.
-// 교육청 학원 자료에는 옛 구 이름으로 남은 곳이 많아서, 옛 이름으로도 조회한 뒤 주소의 동으로 나눈다.
+// 교육청 학원 자료에는 옛 구 이름으로 남은 곳이 많아서, 옛 이름으로도 조회한 뒤 주소로 나눠 담는다.
 const INCHEON_FORMER: Record<string, string[]> = {
   제물포구: ['중구', '동구'],
   영종구: ['중구'],
   서해구: ['서구'],
   검단구: ['서구'],
 };
-/** 영종구가 된 옛 중구 영종·용유 지역 법정동 */
-const YEONGJONG_DONGS = ['운서동', '운남동', '운북동', '중산동', '을왕동', '남북동', '덕교동', '무의동'];
+/** 영종구가 된 옛 중구 영종·용유 지역: 법정동과 대표 도로명 */
+const YEONGJONG_DONGS = ['운서동', '운남동', '운북동', '중산동', '을왕동', '남북동', '덕교동', '무의동', '영종동', '용유동'];
+const YEONGJONG_ROADS = /하늘(달빛|별빛|중앙|대|바라기|해안|도시)?로|공항(동|서)?로|영종(대|해안남|해안북)?로|운서|운남|운북|중산|을왕|용유|무의|구읍|마시란|덕교|삼목|잠진|금산로/;
 /** 검단구가 된 옛 서구 검단 지역 법정동 */
 const GEOMDAN_DONGS = ['검단동', '대곡동', '불로동', '마전동', '금곡동', '오류동', '왕길동', '당하동', '원당동', '아라동'];
 
 /**
  * NEIS 학원교습소정보의 행정구역명(ADMST_ZONE_NM) 후보.
- * 일반구가 있는 시는 시 단위('성남시'), 세종은 '세종특별자치시'로 등록되어 있다.
+ * - 일반구가 있는 시는 대부분 시 단위('성남시')로 등록되어 있지만 청주시는 구 단위('흥덕구')라서 둘 다 조회한다.
+ * - 세종은 '세종특별자치시', 인천 새 구는 옛 구 이름도 함께 조회한다.
  */
 export function neisZoneNames(district: Pick<District, 'sido' | 'sigungu'>): string[] {
   if (district.sido === '세종') return ['세종특별자치시'];
-  const city = district.sigungu.match(/^(\S+시) \S+구$/);
-  if (city) return [city[1]];
+  const city = district.sigungu.match(/^(\S+시) (\S+구)$/);
+  if (city) return [city[1], city[2]];
   if (district.sido === '인천' && INCHEON_FORMER[district.sigungu]) return [district.sigungu, ...INCHEON_FORMER[district.sigungu]];
   return [district.sigungu];
 }
@@ -190,33 +203,66 @@ export interface NeisLocated {
   address: string;
 }
 
+export interface DistrictFilterResult<T> {
+  rows: T[];
+  /** 주소로 구를 가릴 수 없는 곳이 많아 시 전체를 돌려줬는지 */
+  cityWide: boolean;
+  /** 주소로 구를 가릴 수 없어 뺀 곳 수 */
+  unassigned: number;
+}
+
+/** 주소 괄호 안의 법정동·읍·면 이름들: '... 123 (중동, OO빌딩)' → ['중동'] */
+function addressDongs(address: string): string[] {
+  const inParens = Array.from(address.matchAll(/\(([^)]*)\)/g)).map((m) => m[1]).join(',');
+  return Array.from(inParens.matchAll(/([가-힣0-9]+?(?:동|읍|면|가))(?=[\s,]|$)/g)).map((m) => m[1].replace(/\d+(?=동$)/, ''));
+}
+
+/** 일반구가 있는 시의 학원 한 곳이 어느 구인지: 도로명 주소의 구 → 동 이름 → 알 수 없음(null) */
+function guOfRow(r: NeisLocated, cityName: string, guDongs: Map<string, Set<string>>): string | null {
+  if (guDongs.has(r.sigungu)) return r.sigungu; // 청주처럼 교육청 자료가 구 단위인 경우
+  const m = r.roadAddress.match(new RegExp(`${cityName}\\s+(\\S+구)\\s`));
+  if (m && guDongs.has(m[1])) return m[1];
+  const dongs = addressDongs(r.address);
+  const hits = new Set<string>();
+  for (const [gu, set] of guDongs) if (dongs.some((d) => set.has(d))) hits.add(gu);
+  return hits.size === 1 ? Array.from(hits)[0] : null;
+}
+
 /**
  * 교육청 자료를 앱의 시·군·구 하나에 맞게 거른다.
- * - 일반구: 교육청 자료는 시 단위라서 도로명 주소의 구 이름으로 거른다.
- *   (새로 생긴 화성시 일반구처럼 주소에 구가 없으면 시 전체를 돌려주고 cityWide 로 알린다)
- * - 인천: 옛 중구·서구 학원을 주소의 법정동으로 새 구에 나눠 담는다.
+ * - 일반구: 교육청 자료는 대부분 시 단위라서 학원마다 주소의 구 이름이나 동 이름으로 구를 정한다.
+ *   구를 알 수 없는 곳이 절반을 넘으면(예: 2026년에 일반구가 생긴 화성시) 시 전체를 돌려주고 cityWide 로 알린다.
+ * - 인천: 옛 중구·서구 학원을 주소의 법정동·도로명으로 새 구에 나눠 담고, 판단할 수 없으면 뺀다.
  */
-export function filterNeisForDistrict<T extends NeisLocated>(rows: T[], district: Pick<District, 'sido' | 'sigungu'>): { rows: T[]; cityWide: boolean } {
+export function filterNeisForDistrict<T extends NeisLocated>(rows: T[], district: Pick<District, 'sido' | 'sigungu'>): DistrictFilterResult<T> {
   const city = district.sigungu.match(/^(\S+시) (\S+구)$/);
   if (city) {
-    const gu = city[2];
-    const withGu = rows.filter((r) => /\S+구\s/.test(r.roadAddress.replace(/^\S+\s\S+시\s/, '')));
-    if (withGu.length === 0) return { rows, cityWide: true };
-    return { rows: rows.filter((r) => r.roadAddress.includes(` ${gu} `) || r.address.includes(` ${gu} `)), cityWide: false };
+    const [, cityName, gu] = city;
+    const guDongs = new Map<string, Set<string>>();
+    for (const d of DISTRICTS) {
+      const m = d.sido === district.sido && d.sigungu.match(/^(\S+시) (\S+구)$/);
+      if (m && m[1] === cityName) guDongs.set(m[2], new Set(d.dongIndex ?? d.dongs));
+    }
+    const assigned = rows.map((r) => ({ r, gu: guOfRow(r, cityName, guDongs) }));
+    const unknown = assigned.filter((a) => a.gu === null).length;
+    if (rows.length > 0 && unknown / rows.length > 0.5) return { rows, cityWide: true, unassigned: 0 };
+    return { rows: assigned.filter((a) => a.gu === gu).map((a) => a.r), cityWide: false, unassigned: unknown };
   }
   if (district.sido === '인천' && INCHEON_FORMER[district.sigungu]) {
-    const inDongs = (r: T, dongs: string[]) => dongs.some((d) => r.address.includes(d));
     const target = district.sigungu;
-    return {
-      cityWide: false,
-      rows: rows.filter((r) => {
-        if (r.sigungu === target) return true;
-        if (r.sigungu === '중구') return target === '영종구' ? inDongs(r, YEONGJONG_DONGS) : target === '제물포구' && !inDongs(r, YEONGJONG_DONGS);
-        if (r.sigungu === '동구') return target === '제물포구';
-        if (r.sigungu === '서구') return target === '검단구' ? inDongs(r, GEOMDAN_DONGS) : target === '서해구' && !inDongs(r, GEOMDAN_DONGS);
-        return false;
-      }),
-    };
+    const has = (r: T, dongs: string[]) => dongs.some((d) => r.address.includes(d));
+    const hasAnyDong = (r: T) => addressDongs(r.address).length > 0;
+    let unassigned = 0;
+    const out = rows.filter((r) => {
+      if (r.sigungu === target) return true;
+      let to: string | null = null;
+      if (r.sigungu === '동구') to = '제물포구';
+      else if (r.sigungu === '중구') to = has(r, YEONGJONG_DONGS) || YEONGJONG_ROADS.test(r.roadAddress) ? '영종구' : hasAnyDong(r) ? '제물포구' : null;
+      else if (r.sigungu === '서구') to = has(r, GEOMDAN_DONGS) ? '검단구' : hasAnyDong(r) ? '서해구' : null;
+      if (to === null && INCHEON_FORMER[target].includes(r.sigungu)) unassigned++;
+      return to === target;
+    });
+    return { rows: out, cityWide: false, unassigned };
   }
-  return { rows, cityWide: false };
+  return { rows, cityWide: false, unassigned: 0 };
 }

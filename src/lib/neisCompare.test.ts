@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getAcademies } from '../data';
 import { filterNeisForDistrict } from '../data/regions';
-import { fetchAllNeisAcademies, type NeisAcademy } from './neis';
+import { fetchAllNeisAcademies, parseTuition, type NeisAcademy } from './neis';
 import { classifyRows, compareWithSample, coverage } from './neisCompare';
 
 function aca(id: string, name: string, tuitions: [string, number][], extra: Partial<NeisAcademy> = {}): NeisAcademy {
@@ -28,6 +28,15 @@ function aca(id: string, name: string, tuitions: [string, number][], extra: Part
     ...extra,
   };
 }
+
+describe('1:1 과정은 실제 교습비 문자열에서도 빠진다', () => {
+  it('parseTuition → classifyRows 경로', () => {
+    const row = aca('9', '라수학교습소', parseTuition('1:1 고등수학:600000, 고등수학:350000, 고등수학 1:1:700000').map((t) => [t.course, t.price] as [string, number]));
+    const c = coverage(classifyRows([row]));
+    expect(c.privateLessons).toBe(2);
+    expect(c.comparable).toBe(1);
+  });
+});
 
 describe('예시 데이터와 비교', () => {
   const rows = [
@@ -69,6 +78,25 @@ describe('지역 맞춤 거르기', () => {
     expect(r.cityWide).toBe(false);
   });
 
+  it('청주처럼 교육청 자료가 구 단위면 그 구 이름 행을 쓴다', () => {
+    const rows = [loc('흥덕구', '충청북도 청주시 흥덕구 1순환로 1'), loc('상당구', '충청북도 청주시 상당구 상당로 1'), loc('청주시', '충청북도 청주시 흥덕구 직지대로 1')];
+    const r = filterNeisForDistrict(rows, { sido: '충북', sigungu: '청주시 흥덕구' });
+    expect(r.rows).toHaveLength(2);
+  });
+
+  it('구가 섞인 주소: 구가 없는 곳은 동 이름으로 가리고, 모르면 뺀 수를 알린다', () => {
+    const rows = [
+      loc('부천시', '경기도 부천시 원미구 길주로 1'),
+      loc('부천시', '경기도 부천시 소사구 경인로 1'),
+      loc('부천시', '경기도 부천시 중동로 1', '경기도 부천시 중동로 1 (중동, 빌딩)'),
+      loc('부천시', '경기도 부천시 신흥로 1', '경기도 부천시 신흥로 1 3층'),
+    ];
+    const r = filterNeisForDistrict(rows, { sido: '경기', sigungu: '부천시 원미구' });
+    expect(r.rows).toHaveLength(2); // 원미구 주소 + 중동(원미구 동)
+    expect(r.unassigned).toBe(1);
+    expect(r.cityWide).toBe(false);
+  });
+
   it('주소에 구가 없으면 시 전체 (cityWide)', () => {
     const rows = [loc('화성시', '경기도 화성시 동탄대로 1'), loc('화성시', '경기도 화성시 봉담읍 1')];
     const r = filterNeisForDistrict(rows, { sido: '경기', sigungu: '화성시 동탄구' });
@@ -85,6 +113,17 @@ describe('지역 맞춤 거르기', () => {
     ];
     expect(filterNeisForDistrict(rows, { sido: '인천', sigungu: '영종구' }).rows).toHaveLength(2);
     expect(filterNeisForDistrict(rows, { sido: '인천', sigungu: '제물포구' }).rows).toHaveLength(2);
+  });
+
+  it('인천 옛 중구 주소에 동이 없으면 영종 도로명으로 가리고, 그래도 모르면 뺀다', () => {
+    const rows = [
+      loc('중구', '인천광역시 중구 하늘달빛로 139', '인천광역시 중구 하늘달빛로 139 777동 208호'),
+      loc('중구', '인천광역시 중구 어떤로 1', '인천광역시 중구 어떤로 1 2층'),
+    ];
+    expect(filterNeisForDistrict(rows, { sido: '인천', sigungu: '영종구' }).rows).toHaveLength(1);
+    const j = filterNeisForDistrict(rows, { sido: '인천', sigungu: '제물포구' });
+    expect(j.rows).toHaveLength(0);
+    expect(j.unassigned).toBe(1);
   });
 });
 

@@ -32,6 +32,18 @@ describe('parseTuition', () => {
     expect(parseTuition('독서논술(초,중등)1:150000')).toEqual([{ course: '독서논술(초,중등)1', price: 150000 }]);
   });
 
+  it("수업 인원 '1:1'은 금액 구분자로 자르지 않는다", () => {
+    expect(parseTuition('1:1 고등수학:600000, 고등수학 1:1:700000, 1:2수학:400000')).toEqual([
+      { course: '1대1 고등수학', price: 600000 },
+      { course: '고등수학 1대1', price: 700000 },
+      { course: '1대2수학', price: 400000 },
+    ]);
+    expect(parseTuition('초등3:150000, 수학A:180000')).toEqual([
+      { course: '초등3', price: 150000 },
+      { course: '수학A', price: 180000 },
+    ]);
+  });
+
   it('빈 값', () => {
     expect(parseTuition(' ')).toEqual([]);
     expect(parseTuition(null)).toEqual([]);
@@ -88,6 +100,19 @@ describe('NEIS 응답 처리', () => {
 
   it('오류 코드는 예외', () => {
     expect(() => parseNeisResponse({ RESULT: { CODE: 'ERROR-290', MESSAGE: '인증키' } }, false)).toThrow(NeisError);
+  });
+
+  it('5xx 는 다시 시도하고, 계속 실패하면 알기 쉬운 오류', async () => {
+    let n = 0;
+    const flaky = vi.fn(async () => (++n < 2 ? new Response('busy', { status: 503 }) : new Response(JSON.stringify({ RESULT: { CODE: 'INFO-200', MESSAGE: '' } }))));
+    await expect(fetchNeisAcademies({ officeCode: 'B10' }, flaky as unknown as typeof fetch, [0, 0])).resolves.toMatchObject({ total: 0 });
+    expect(flaky).toHaveBeenCalledTimes(2);
+    const down = vi.fn(async () => new Response('down', { status: 503 }));
+    await expect(fetchNeisAcademies({ officeCode: 'B10' }, down as unknown as typeof fetch, [0, 0])).rejects.toThrow('503');
+    expect(down).toHaveBeenCalledTimes(3);
+    const bad = vi.fn(async () => new Response('nope', { status: 404 }));
+    await expect(fetchNeisAcademies({ officeCode: 'B10' }, bad as unknown as typeof fetch, [0, 0])).rejects.toThrow('404');
+    expect(bad).toHaveBeenCalledTimes(1);
   });
 
   it('URL 구성 – 인증키가 없으면 5건 샘플 모드', async () => {

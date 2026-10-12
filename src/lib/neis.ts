@@ -84,6 +84,8 @@ export interface NeisAcademy {
  */
 export function parseTuition(text: string | null | undefined): TuitionItem[] {
   if (!text || !text.trim()) return [];
+  // '1:1 고등수학:600000'의 '1:1'(수업 인원)이 금액 구분자로 잘리지 않게 '1대1'로 바꿔 둔다
+  text = text.replace(/(?<![\d:])(\d{1,2})\s*:\s*(\d{1,2})(?![\d,])(?=\s*(?:[^\d\s,]|:|\s))/g, '$1대$2');
   const items: TuitionItem[] = [];
   // 과정명에 쉼표가 거의 없고, 금액은 콜론 뒤 숫자이므로 "이름:숫자" 쌍을 순서대로 찾는다.
   // 과정명 안의 괄호 속 쉼표는 허용한다: 'HSK(3, 4):170000'
@@ -190,16 +192,27 @@ export function parseNeisResponse(json: unknown, sampleMode: boolean): NeisResul
   return { total, rows, sampleMode };
 }
 
-export async function fetchNeisAcademies(q: NeisQuery, fetchImpl: typeof fetch = fetch): Promise<NeisResult> {
+const RETRY_DELAYS_MS = [800, 2000];
+
+export async function fetchNeisAcademies(q: NeisQuery, fetchImpl: typeof fetch = fetch, retryDelays: number[] = RETRY_DELAYS_MS): Promise<NeisResult> {
   const sampleMode = !q.key?.trim();
-  let res: Response;
-  try {
-    res = await fetchImpl(buildNeisUrl(sampleMode ? { ...q, pageSize: 5 } : q));
-  } catch {
-    throw new NeisError('NETWORK', '교육청 서버에 연결하지 못했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도하세요.');
+  const url = buildNeisUrl(sampleMode ? { ...q, pageSize: 5 } : q);
+  // 교육청 서버가 잠깐 503 을 주는 경우가 있어 연결 오류·5xx 는 두 번까지 다시 시도한다
+  for (let attempt = 0; ; attempt++) {
+    let res: Response | null = null;
+    try {
+      res = await fetchImpl(url);
+    } catch {
+      res = null;
+    }
+    if (res && res.ok) return parseNeisResponse(await res.json(), sampleMode);
+    const retryable = !res || res.status >= 500;
+    if (!retryable || attempt >= retryDelays.length) {
+      if (!res) throw new NeisError('NETWORK', '교육청 서버에 연결하지 못했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도하세요.');
+      throw new NeisError(`HTTP-${res.status}`, `교육청 서버 응답 오류 (${res.status}). 잠시 후 다시 시도하세요.`);
+    }
+    await new Promise((r) => setTimeout(r, retryDelays[attempt]));
   }
-  if (!res.ok) throw new NeisError(`HTTP-${res.status}`, `교육청 서버 응답 오류 (${res.status})`);
-  return parseNeisResponse(await res.json(), sampleMode);
 }
 
 /** 인증키가 있을 때 한 번에 받을 수 있는 최대 건수 (API 제한) */
@@ -211,16 +224,16 @@ export const NEIS_MAX_PAGE_SIZE = 1000;
  */
 export async function fetchAllNeisAcademies(
   q: Omit<NeisQuery, 'page' | 'pageSize'>,
-  options: { maxRows?: number; onProgress?: (loaded: number, total: number) => void; fetchImpl?: typeof fetch } = {},
+  options: { maxRows?: number; onProgress?: (loaded: number, total: number) => void; fetchImpl?: typeof fetch; retryDelays?: number[] } = {},
 ): Promise<NeisResult & { truncated: boolean }> {
-  const { maxRows = 6000, onProgress, fetchImpl = fetch } = options;
-  const first = await fetchNeisAcademies({ ...q, page: 1, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl);
+  const { maxRows = 6000, onProgress, fetchImpl = fetch, retryDelays } = options;
+  const first = await fetchNeisAcademies({ ...q, page: 1, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
   const rows = [...first.rows];
   onProgress?.(rows.length, first.total);
   if (first.sampleMode) return { ...first, truncated: first.total > rows.length };
   const limit = Math.min(first.total, maxRows);
   for (let page = 2; rows.length < limit; page++) {
-    const next = await fetchNeisAcademies({ ...q, page, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl);
+    const next = await fetchNeisAcademies({ ...q, page, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
     if (next.rows.length === 0) break;
     rows.push(...next.rows);
     onProgress?.(rows.length, first.total);

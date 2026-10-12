@@ -68,7 +68,7 @@ async function loadDistrict(district: District, key: string, maxRows: number) {
     await sleep(300);
   }
   const filtered = filterNeisForDistrict(Array.from(byId.values()), district);
-  return { rows: filtered.rows, total, cityWide: filtered.cityWide };
+  return { rows: filtered.rows, total, cityWide: filtered.cityWide, unassigned: filtered.unassigned };
 }
 
 const pct = (v: number | null) => (v === null ? '-' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`);
@@ -91,7 +91,7 @@ async function main() {
   for (const district of districts) {
     const name = `${district.sido} ${district.sigungu}`;
     process.stdout.write(`${name} … `);
-    const { rows, total, cityWide } = await loadDistrict(district, args.key, args.maxRows);
+    const { rows, total, cityWide, unassigned } = await loadDistrict(district, args.key, args.maxRows);
     const items = classifyRows(rows);
     const cov = coverage(items);
     const table = compareWithSample(items, academies, { sido: district.sido, sigungu: district.sigungu }, 5);
@@ -115,7 +115,7 @@ async function main() {
       .map((k) => `${k.kind} ${k.total}곳 중 교습비 공개 ${k.priced}곳`)
       .join(', ');
     report.push(
-      `학원·교습소 ${rows.length.toLocaleString()}곳${cityWide ? ' (주소에 구 이름이 없어 시 전체 기준)' : ''} (${kinds}) · 교습비 과정 ${cov.total.toLocaleString()}개 · 비교 사용 ${cov.comparable.toLocaleString()}개 (과목 미상 ${cov.noSubject}, 특강·이상치 ${cov.excluded}, 1:1 ${cov.privateLessons})`,
+      `학원·교습소 ${rows.length.toLocaleString()}곳${cityWide ? ' (주소로 구를 가릴 수 없는 곳이 많아 시 전체 기준)' : ''}${unassigned ? ` · 구를 알 수 없어 뺀 곳 ${unassigned}` : ''} (${kinds}) · 교습비 과정 ${cov.total.toLocaleString()}개 · 비교 사용 ${cov.comparable.toLocaleString()}개 (과목 미상 ${cov.noSubject}, 특강·이상치 ${cov.excluded}, 1:1 ${cov.privateLessons})`,
       '',
     );
     if (table.length === 0) {
@@ -151,7 +151,7 @@ async function main() {
     '',
     `- 조회일: ${fetchedAt} · 출처: 나이스 교육정보 개방 포털 학원교습소정보(acaInsTiInfo)`,
     `- 지역 ${districts.length}곳: ${districts.map((d) => `${d.sido} ${d.sigungu}`).join(', ')}`,
-    '- 비교 기준: 교육청 신고 과정별 1인 교습비(1:1·특강·재료비·3만원 미만·300만원 초과 제외) 중앙값 vs 예시 데이터 월 수강료 중앙값(그룹·소수정예, 공공시설 제외)',
+    '- 비교 기준: 교육청 신고 과정별 1인 교습비(1:1·특강·재료비·3만원 이하·300만원 초과 제외) 중앙값 vs 예시 데이터 월 수강료 중앙값(그룹·소수정예, 공공시설 제외)',
     '- "예시가 실제보다" +20% = 예시 데이터가 실제보다 20% 비싸게 잡혀 있음',
     '- 주의: 교육청 자료의 과정별 교습비는 주로 교습소(1인 운영 소규모)에만 채워져 있어, 실제 값은 교습소 시세에 가깝습니다',
     '',

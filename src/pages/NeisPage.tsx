@@ -6,7 +6,7 @@ import { RangeStrip } from '../charts/RangeStrip';
 import { RegionPicker } from '../components/RegionPicker';
 import { ChipToggle, EmptyState, PageHeader, Section, SubjectTile } from '../components/ui';
 import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
-import { EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames } from '../data/regions';
+import { districtsOf, EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames, SIDOS } from '../data/regions';
 import { useAcademies } from '../hooks';
 import { manwon, shortMan, signedPercent, won } from '../lib/format';
 import { fetchAllNeisAcademies, NEIS_REALMS, neisErrorMessage, type NeisAcademy } from '../lib/neis';
@@ -26,6 +26,7 @@ interface LoadState {
   sampleMode: boolean;
   truncated: boolean;
   cityWide: boolean;
+  unassigned: number;
   searchedFor: { sido: string; sigungu: string; realm: string } | null;
 }
 
@@ -45,10 +46,17 @@ export function NeisPage() {
   const academies = useAcademies();
   const { settings, updateSettings, showToast } = useApp();
   const [params] = useSearchParams();
-  const initialSido = params.get('sido') ?? settings.home?.sido ?? '서울';
-  const initialGu = params.get('gu') ?? (settings.home?.sido === initialSido ? settings.home.sigungu : '');
+  // 링크로 받은 지역이 잘못됐거나 구가 없으면 내 동네 → 그 시·도의 첫 구 순서로 채운다
+  const paramSido = params.get('sido') ?? '';
+  const initialSido = SIDOS.includes(paramSido) ? paramSido : (settings.home?.sido ?? '서울');
+  const paramGu = params.get('gu') ?? '';
+  const initialGu = findDistrict(initialSido, paramGu)
+    ? paramGu
+    : settings.home?.sido === initialSido
+      ? settings.home.sigungu
+      : (districtsOf(initialSido)[0]?.sigungu ?? '');
   const [sido, setSido] = useState(initialSido);
-  const [sigungu, setSigungu] = useState(findDistrict(initialSido, initialGu) ? initialGu : '');
+  const [sigungu, setSigungu] = useState(initialGu);
   const [realm, setRealm] = useState(params.get('realm') ?? '');
   const [name, setName] = useState('');
   const [keyDraft, setKeyDraft] = useState('');
@@ -65,11 +73,12 @@ export function NeisPage() {
     sampleMode: false,
     truncated: false,
     cityWide: false,
+    unassigned: 0,
     searchedFor: null,
   });
 
   const district = findDistrict(sido, sigungu);
-  const office = EDU_OFFICES.find((o) => o.sido === sido)!;
+  const office = EDU_OFFICES.find((o) => o.sido === sido) ?? EDU_OFFICES[0];
 
   const run = async () => {
     if (!district) return;
@@ -101,7 +110,7 @@ export function NeisPage() {
         for (const row of r.rows) byId.set(row.id, row);
       }
       const filtered = filterNeisForDistrict(Array.from(byId.values()), district);
-      const result = { rows: filtered.rows, total, sampleMode, truncated, cityWide: filtered.cityWide };
+      const result = { rows: filtered.rows, total, sampleMode, truncated, cityWide: filtered.cityWide, unassigned: filtered.unassigned };
       cache.set(cacheKey, result);
       setState({ ...result, loading: false, progress: '', error: '', searchedFor });
     } catch (err) {
@@ -124,24 +133,26 @@ export function NeisPage() {
   const comparison = useMemo(() => compareWithSample(items, academies, scope), [items, academies, scopeKey]);
   const subjectRows = comparison.filter((r) => r.age === null);
 
+  // 샘플 5건으로는 과목 필터가 의미가 없어 적용하지 않는다
+  const activeSelected = state.sampleMode ? null : selected;
   const selectedItems = useMemo(
     () =>
-      selected
-        ? items.filter((i) => isComparable(i) && i.subjectId === selected.subjectId && (!selected.age || i.ages.includes(selected.age)))
+      activeSelected
+        ? items.filter((i) => isComparable(i) && i.subjectId === activeSelected.subjectId && (!activeSelected.age || i.ages.includes(activeSelected.age)))
         : [],
-    [items, selected],
+    [items, activeSelected],
   );
   const selectedStats = summarize(selectedItems.map((i) => i.price));
-  const selectedSample = selected ? sampleStats(academies, selected.subjectId, selected.age, scope) : null;
+  const selectedSample = activeSelected ? sampleStats(academies, activeSelected.subjectId, activeSelected.age, scope) : null;
 
   const listAcademies = useMemo(() => {
-    const ids = selected ? new Set(selectedItems.map((i) => i.academy.id)) : null;
+    const ids = activeSelected ? new Set(selectedItems.map((i) => i.academy.id)) : null;
     const list = state.rows.filter((r) => r.tuitions.length > 0 && (!ids || ids.has(r.id)));
     const relevant = (r: NeisAcademy) =>
-      selected ? selectedItems.filter((i) => i.academy.id === r.id).map((i) => i.price) : r.tuitions.map((t) => t.price);
+      activeSelected ? selectedItems.filter((i) => i.academy.id === r.id).map((i) => i.price) : r.tuitions.map((t) => t.price);
     const minOf = (r: NeisAcademy) => Math.min(...relevant(r));
     return [...list].sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name, 'ko') : sort === 'min_asc' ? minOf(a) - minOf(b) : minOf(b) - minOf(a)));
-  }, [state.rows, selected, selectedItems, sort]);
+  }, [state.rows, activeSelected, selectedItems, sort]);
 
   const itemsByAcademy = useMemo(() => {
     const map = new Map<string, ClassifiedItem[]>();
@@ -150,7 +161,7 @@ export function NeisPage() {
   }, [items]);
 
   const rowLabel = (r: Pick<ComparisonRow, 'subjectId' | 'age'>) => `${SUBJECT_MAP[r.subjectId]?.name ?? r.subjectId}${r.age ? ` · ${AGE_LABELS[r.age]}` : ''}`;
-  const isSelected = (r: Pick<ComparisonRow, 'subjectId' | 'age'>) => selected?.subjectId === r.subjectId && (selected?.age ?? null) === r.age;
+  const isSelected = (r: Pick<ComparisonRow, 'subjectId' | 'age'>) => activeSelected?.subjectId === r.subjectId && (activeSelected?.age ?? null) === r.age;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -243,7 +254,7 @@ export function NeisPage() {
         )}
         <p className="text-[12px] text-ink-3">
           {office.office} · 교육청 자료의 행정구역 이름: {district ? neisZoneNames(district).join(', ') : '-'}
-          {district && /시 \S+구$/.test(district.sigungu) && ' (시 단위 자료를 주소의 구 이름으로 거릅니다)'}
+          {district && /시 \S+구$/.test(district.sigungu) && ' (시 단위 자료는 주소의 구·동 이름으로 거릅니다)'}
         </p>
       </form>
 
@@ -265,7 +276,12 @@ export function NeisPage() {
           >
             {state.cityWide && (
               <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
-                교육청 자료 주소에 구 이름이 없어 {state.searchedFor.sigungu.split(' ')[0]} 전체 기준으로 보여드려요.
+                교육청 자료 주소의 절반 이상에 구 이름이 없어 {state.searchedFor.sigungu.split(' ')[0]} 전체 기준으로 보여드려요.
+              </p>
+            )}
+            {state.unassigned > 0 && (
+              <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
+                주소만으로 어느 구인지 알 수 없는 {state.unassigned.toLocaleString()}곳은 뺐어요.
               </p>
             )}
             {kinds.length > 0 && (
@@ -361,8 +377,17 @@ export function NeisPage() {
             )
           )}
 
-          {selected && selectedStats && (
-            <Section title={`${rowLabel(selected)} 실제 교습비 분포`} desc={`${selectedStats.n}개 과정 · 세로선은 중앙값과 예시 데이터 중앙값`}>
+          {activeSelected && (
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <ChipToggle pressed onClick={() => setSelected(null)}>
+                {rowLabel(activeSelected)}만 보는 중 · 해제 ✕
+              </ChipToggle>
+              {selectedItems.length === 0 && <span className="text-[13px] text-ink-3">이 지역에는 해당 과정이 없어요.</span>}
+            </div>
+          )}
+
+          {activeSelected && selectedStats && (
+            <Section title={`${rowLabel(activeSelected)} 실제 교습비 분포`} desc={`${selectedStats.n}개 과정 · 세로선은 중앙값과 예시 데이터 중앙값`}>
               <div className="card p-4">
                 <RangeStrip stats={selectedStats} value={selectedSample?.stats?.median} valueLabel="예시 중앙값" format={manwon} />
                 <div className="mt-4">
@@ -381,7 +406,7 @@ export function NeisPage() {
 
           {listAcademies.length > 0 && (
             <Section
-              title={selected ? `${rowLabel(selected)} 과정이 있는 학원` : '교습비를 공개한 학원'}
+              title={activeSelected ? `${rowLabel(activeSelected)} 과정이 있는 학원` : '교습비를 공개한 학원'}
               desc={`${listAcademies.length.toLocaleString()}곳`}
               action={
                 <>
@@ -396,13 +421,6 @@ export function NeisPage() {
                 </>
               }
             >
-              {selected && (
-                <div className="mb-2">
-                  <ChipToggle pressed onClick={() => setSelected(null)}>
-                    {rowLabel(selected)} 필터 해제 ✕
-                  </ChipToggle>
-                </div>
-              )}
               <ul className="flex flex-col gap-2">
                 {listAcademies.slice(0, 60).map((r) => {
                   const its = itemsByAcademy.get(r.id) ?? [];
@@ -418,7 +436,7 @@ export function NeisPage() {
                       </div>
                       <ul className="num mt-2 flex flex-wrap gap-1.5">
                         {its.slice(0, 14).map((t, i) => {
-                          const highlight = selected && isComparable(t) && t.subjectId === selected.subjectId && (!selected.age || t.ages.includes(selected.age));
+                          const highlight = activeSelected && isComparable(t) && t.subjectId === activeSelected.subjectId && (!activeSelected.age || t.ages.includes(activeSelected.age));
                           return (
                             <li
                               key={`${t.course}-${i}`}

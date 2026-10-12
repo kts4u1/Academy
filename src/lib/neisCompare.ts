@@ -13,7 +13,7 @@ export interface ClassifiedItem extends ClassifiedCourse {
 }
 
 /** 1:1·개인 레슨은 그룹 수업과 가격대가 달라서 비교에서 뺀다 (예시 데이터도 1:1 요금제는 뺀다) */
-const PRIVATE_RE = /1\s*:\s*1|개인|과외|프라이빗|private/i;
+const PRIVATE_RE = /1\s*(:|대)\s*1|개인|과외|프라이빗|private/i;
 
 export function classifyRows(rows: NeisAcademy[]): ClassifiedItem[] {
   return rows.flatMap((academy) => {

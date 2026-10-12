@@ -20,6 +20,17 @@ describe('과목 분류', () => {
     expect(classifyCourse(course, 150000, ctx(academy)).subjectId).toBe(expected);
   });
 
+  it('규칙 겹침: 중국어·원어민중국어·방송연기', () => {
+    expect(classifyCourse('중국어+HSK', 200000, ctx('밍중국어교습소')).subjectId).toBe('lang2');
+    expect(classifyCourse('원어민중국어', 200000, ctx('밍중국어교습소')).subjectId).toBe('lang2');
+    expect(classifyCourse('방송연기', 200000, ctx('스타연기교습소', '기타')).subjectId).toBe('acting');
+  });
+
+  it('학원 이름에 과목이 여럿이면 과목 없는 과정은 비워 둔다', () => {
+    expect(classifyCourse('중등반', 250000, ctx('한빛수학영어교습소')).subjectId).toBeNull();
+    expect(classifyCourse('중등수학', 250000, ctx('한빛수학영어교습소')).subjectId).toBe('math');
+  });
+
   it("'외국어'를 국어로 보지 않는다", () => {
     expect(classifyCourse('실용외국어9', 150000, ctx('다한영어교습소', '실용외국어(유아/초·중·고)')).subjectId).toBe('english');
   });

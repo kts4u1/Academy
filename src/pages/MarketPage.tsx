@@ -212,9 +212,10 @@ export function MarketPage() {
   const freqLabel = { once: '최초 1회', monthly: '매월', quarterly: '3개월마다', yearly: '매년', per_event: '행사·심사 때' } as const;
   const scopeLabel = sigungu || sido || '전국';
   // 교육청 자료는 시·군·구 단위로 불러오므로, 구를 안 골랐으면 같은 시·도의 내 동네를 기본으로 쓴다
-  const snapshot = snapshotFor(sido || settings.home?.sido || '서울', sigungu || undefined, subjectId, age);
   const neisSido = sido || settings.home?.sido || '서울';
-  const neisGu = sigungu || (settings.home?.sido === neisSido ? settings.home.sigungu : '');
+  const neisGu = sigungu || (settings.home?.sido === neisSido ? settings.home.sigungu : (districtsOf(neisSido)[0]?.sigungu ?? ''));
+  // 스냅샷 카드도 비교 링크와 같은 구 기준으로 보여준다
+  const snapshot = neisGu ? snapshotFor(neisSido, neisGu, subjectId, age) : undefined;
   const neisLink = `/neis?sido=${encodeURIComponent(neisSido)}${neisGu ? `&gu=${encodeURIComponent(neisGu)}` : ''}&subject=${subjectId}${age ? `&age=${age}` : ''}`;
   const searchLink = `/search?subject=${subjectId}${age ? `&age=${age}` : ''}${classType ? `&ct=${classType}` : ''}${sido ? `&sido=${encodeURIComponent(sido)}` : ''}${sigungu ? `&gu=${encodeURIComponent(sigungu)}` : ''}`;
 
@@ -329,7 +330,7 @@ export function MarketPage() {
                   중간 50% {manwon(snapshot.p25)}~{manwon(snapshot.p75)} · {snapshot.n}개 과정
                 </span>
               </div>
-              <p className="mt-1 text-[12px] text-ink-3">실제 학원들이 교육청에 신고한 과정별 교습비 중앙값이에요. 위 시세는 예시 데이터예요.</p>
+              <p className="mt-1 text-[12px] text-ink-3">교육청에 신고된 과정별 교습비(주로 교습소) 중앙값이에요. 위 시세는 예시 데이터예요.</p>
             </div>
           )}
 
@@ -340,7 +341,7 @@ export function MarketPage() {
             >
               <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-bold">교육청 실제 교습비와 비교하기</span>
-                <span className="block text-[13px] text-ink-2">이 지역 {subject.name} 학원들이 교육청에 신고한 교습비를 불러와 위 예시 시세와 나란히 봅니다.</span>
+                <span className="block text-[13px] text-ink-2">{neisSido} {neisGu} {subject.name} 학원·교습소가 교육청에 신고한 교습비를 불러와 예시 시세와 나란히 봅니다.</span>
               </span>
               <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-ink-3" />
             </Link>

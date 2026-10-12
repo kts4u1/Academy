@@ -1,6 +1,6 @@
 import type { Academy, AgeGroup, CategoryGroup, ClassType, PricePlan } from '../types';
 import { SUBJECT_MAP } from '../data/categories';
-import { SIDO_ALIASES } from '../data/regions';
+import { MERGED_SIDO_NAMES, SIDO_ALIASES } from '../data/regions';
 import { distanceKm } from './geo';
 import { comparePlanToPeers, sessionBucket, type PeerComparison } from './market';
 import { computeCost, type CostBreakdown, type CostOptions, type Metric } from './pricing';
@@ -79,7 +79,12 @@ function normalize(text: string): string {
 
 /** 검색어 토큰이 모두 학원 정보 어딘가에 포함되면 일치 (예: "대치동 수학", "강남 주짓수") */
 export function matchesKeyword(academy: Academy, q: string): boolean {
-  const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  // '전남광주통합특별시'처럼 통합 시·도 이름은 정확히 같을 때만 광주·전남 둘 다에 맞춘다
+  const merged = tokens.filter((t) => MERGED_SIDO_NAMES[t]);
+  if (merged.some((t) => !MERGED_SIDO_NAMES[t].includes(academy.region.sido))) return false;
+  tokens = tokens.filter((t) => !MERGED_SIDO_NAMES[t]);
   if (tokens.length === 0) return true;
   const haystack = normalize(
     [

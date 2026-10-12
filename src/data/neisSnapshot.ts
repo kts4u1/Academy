@@ -20,6 +20,6 @@ const data = snapshot as { fetchedAt: string | null; rows: SnapshotRow[] };
 
 export const SNAPSHOT_DATE = data.fetchedAt;
 
-export function snapshotFor(sido: string, sigungu: string | undefined, subjectId: string, age: AgeGroup | null): SnapshotRow | undefined {
-  return data.rows.find((r) => r.sido === sido && (!sigungu || r.sigungu === sigungu) && r.subjectId === subjectId && r.age === age);
+export function snapshotFor(sido: string, sigungu: string, subjectId: string, age: AgeGroup | null): SnapshotRow | undefined {
+  return data.rows.find((r) => r.sido === sido && r.sigungu === sigungu && r.subjectId === subjectId && r.age === age);
 }

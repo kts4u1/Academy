@@ -2,7 +2,7 @@ import { ExternalLink } from 'lucide-react';
 import { PageHeader, Section } from '../components/ui';
 import { EDU_OFFICES } from '../data/regions';
 import { useAvailability } from '../hooks';
-import { kstDate, manwon } from '../lib/format';
+import { dotDate, kstDate, manwon } from '../lib/format';
 import { MAX_MONTHLY, MIN_MONTHLY } from '../lib/neisClassify';
 import { MIN_MARKET_N } from '../lib/realData';
 
@@ -20,7 +20,16 @@ export function DataInfoPage() {
         ) : mode === 'static' && manifest ? (
           <>
             <p>
-              <b className="text-ink">{kstDate(manifest.updatedAt)}</b>에 교육청에서 받은 자료예요. 학원·교습소{' '}
+              {manifest.sourceKind === 'file' ? (
+                <>
+                  교육청이 매달 올리는 전국 파일(<b className="text-ink">{manifest.baseDate ? dotDate(manifest.baseDate) : '-'} 기준</b>)을 {kstDate(manifest.updatedAt)}에 받아 만든 자료예요.
+                </>
+              ) : (
+                <>
+                  <b className="text-ink">{kstDate(manifest.updatedAt)}</b>에 교육청 Open API 로 받은 자료예요.
+                </>
+              )}{' '}
+              학원·교습소{' '}
               <b className="text-ink">{manifest.totals.academies.toLocaleString()}곳</b> 중 교습비가 공개된 곳은 {manifest.totals.priced.toLocaleString()}곳, 신고된 교습과정은{' '}
               {manifest.totals.courses.toLocaleString()}개예요.
             </p>
@@ -43,7 +52,8 @@ export function DataInfoPage() {
           <li className="px-4 py-3">
             <b className="block text-[14px]">학원·교습소 목록과 신고 교습비</b>
             <span className="text-ink-2">
-              나이스 교육정보 개방 포털 ‘학원교습소정보’(acaInsTiInfo). 전국 17개 시·도교육청 자료를 모두 받아요. 휴원·폐원한 곳은 빼요.
+              나이스 교육정보 개방 포털 ‘학원교습소정보’. 인증키가 있으면 Open API(acaInsTiInfo)로 전국 17개 시·도교육청 자료를 매주 받고, 없거나 API 가 실패하면 교육청이
+              매달 올리는 전국 파일(CSV)을 써요. 휴원·폐원한 곳은 빼요.
             </span>
           </li>
           <li className="px-4 py-3">
@@ -59,10 +69,13 @@ export function DataInfoPage() {
 
       <Section title="매주 자동 업데이트" desc="GitHub Actions 가 매주 월요일 새벽 3시(한국 시간)에 실행해요">
         <ol className="card flex list-decimal flex-col gap-2 py-4 pl-9 pr-4 text-[13px] text-ink-2">
-          <li>저장소 Settings → Secrets and variables → Actions → New repository secret 에서 이름 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code>, 값에 발급받은 인증키를 넣어요.</li>
-          <li>Settings → Pages 에서 Source 를 ‘GitHub Actions’로 바꿔요.</li>
+          <li>저장소 Settings → Pages 에서 Source 를 ‘GitHub Actions’로 바꿔요.</li>
+          <li>
+            (권장) Settings → Secrets and variables → Actions → New repository secret 에서 이름 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code>, 값에 발급받은
+            인증키를 넣어요. 없으면 교육청 전국 파일(매달 갱신)로 만들어요.
+          </li>
           <li>Actions 탭 → ‘교육청 데이터 주간 업데이트’ → Run workflow 로 처음 한 번 실행해요. 이후로는 매주 자동이에요.</li>
-          <li>교육청 서버 오류로 받다가 실패하면 지난주 데이터를 그대로 두고, 다음 실행에서 다시 받아요.</li>
+          <li>받다가 실패하면 지난주 데이터를 그대로 두고, 다음 실행에서 다시 받아요. 9일 넘게 갱신되지 않으면 화면 위쪽에 알려 드려요.</li>
         </ol>
       </Section>
 

@@ -133,25 +133,80 @@ function addressDongs(address: string): string[] {
   return Array.from(inParens.matchAll(/([가-힣0-9]+?(?:동|읍|면|가))(?=[\s,]|$)/g)).map((m) => m[1].replace(/\d+(?=동$)/, ''));
 }
 
-/** 일반구가 있는 시의 학원 한 곳이 어느 구인지: 도로명 주소의 구 → 동 이름 → 알 수 없음(null) */
-function guOfRow(r: NeisLocated, cityName: string, guDongs: Map<string, Set<string>>): string | null {
+/**
+ * 행정동 이름과 다른 법정동·도로명 단서 (2026년에 생긴 화성시 일반구는 주소에 구가 거의 없다).
+ * 동탄구는 행정동이 '동탄1~9동'뿐이라 주소 괄호의 법정동(반송동·청계동 …)과 '동탄○○로' 도로명으로 찾는다.
+ */
+const GU_HINTS: Record<string, { dongs?: string[]; road?: RegExp }> = {
+  '경기|화성시 동탄구': {
+    dongs: ['반송동', '석우동', '능동', '청계동', '영천동', '오산동', '산척동', '목동', '장지동', '송동', '신동', '중동', '방교동', '금곡동', '여울동'],
+    road: /동탄/,
+  },
+};
+
+/** 일반구가 있는 시의 학원 한 곳이 어느 구인지: 도로명 주소의 구 → 동 이름 → 도로명 단서 → 알 수 없음(null) */
+function guOfRow(r: NeisLocated, cityName: string, guDongs: Map<string, Set<string>>, sido = ''): string | null {
   if (guDongs.has(r.sigungu)) return r.sigungu; // 청주처럼 교육청 자료가 구 단위인 경우
   const m = r.roadAddress.match(new RegExp(`${cityName}\\s+(\\S+구)\\s`));
   if (m && guDongs.has(m[1])) return m[1];
   const dongs = addressDongs(r.address);
   const hits = new Set<string>();
   for (const [gu, set] of guDongs) if (dongs.some((d) => set.has(d))) hits.add(gu);
-  return hits.size === 1 ? Array.from(hits)[0] : null;
+  if (hits.size === 1) return Array.from(hits)[0];
+  // 동 이름이 없거나 애매할 때만 도로명 단서 ('동탄대로'는 병점구 쪽에도 걸쳐 있어 동 이름을 먼저 본다)
+  if (hits.size === 0) {
+    const road = r.roadAddress.replace(new RegExp(`^.*?${cityName}\\s*`), '');
+    for (const gu of guDongs.keys()) if (GU_HINTS[`${sido}|${cityName} ${gu}`]?.road?.test(road)) return gu;
+  }
+  return null;
 }
 
-export type NeisResolution = { sigungu: string } | { bucket: string };
+/** 앱 시·군·구로 배정(sido 가 있으면 다른 시·도로 옮김: 군위군 경북 → 대구) 또는 구 미상 묶음 */
+export type NeisResolution = { sigungu: string; sido?: string } | { bucket: string };
+
+/** '서울특별시', '전남광주통합특별시' 같은 공식 시·도 이름 → 앱 시·도 후보 */
+function sidosOfFullName(full: string): string[] {
+  if (MERGED_SIDO_NAMES[full]) return MERGED_SIDO_NAMES[full];
+  return Object.entries(SIDO_ALIASES)
+    .filter(([sido, aliases]) => full === sido || aliases.includes(full))
+    .map(([sido]) => sido);
+}
+
+/** 도로명 주소 앞부분: '경상남도 창원시 마산회원구 …' → { sidos: ['경남'], sgg: '창원시', gu: '마산회원구' } */
+function addressParts(roadAddress: string): { sidos: string[]; sgg: string; gu?: string } | null {
+  const m = roadAddress.trim().match(/^(\S+)\s+(\S+(?:시|군|구))(?:\s+(\S+구))?(?=\s|$)/);
+  if (m) return { sidos: sidosOfFullName(m[1]), sgg: m[2], ...(m[3] ? { gu: m[3] } : {}) };
+  // 세종은 시 아래에 바로 읍·면·동이 온다
+  if (/^세종(특별자치시)?\s/.test(roadAddress.trim())) return { sidos: ['세종'], sgg: '세종시' };
+  return null;
+}
+
+/**
+ * 도로명 주소의 시·도·시·군·구로 앱 시·군·구 찾기 (교육청 자료의 행정구역명이 비었거나 옛 이름일 때).
+ * '경상남도 창원시 마산회원구 …' → 경남 '창원시 마산회원구', '대구광역시 군위군 …' → 대구 '군위군'
+ */
+export function districtFromAddress(roadAddress: string): District | undefined {
+  const p = addressParts(roadAddress);
+  if (!p) return undefined;
+  for (const sido of p.sidos) {
+    const found = (p.gu && findDistrict(sido, `${p.sgg} ${p.gu}`)) || findDistrict(sido, p.sgg);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** 없어진 행정구역 → 지금의 시·군·구 */
+const LEGACY_ZONES: Record<string, { sido: string; sigungu: string }> = {
+  // 2012년 세종특별자치시 출범. 충남 교육청 자료에 '연기군'으로 남은 곳이 있다
+  '충남|연기군': { sido: '세종', sigungu: '세종시' },
+};
 
 /** 일반구가 있는 시 → 구 이름 → 그 구의 동 이름들 */
 function cityGuDongs(sido: string, cityName: string): Map<string, Set<string>> {
   const guDongs = new Map<string, Set<string>>();
   for (const d of DISTRICTS) {
     const m = d.sido === sido && d.sigungu.match(/^(\S+시) (\S+구)$/);
-    if (m && m[1] === cityName) guDongs.set(m[2], new Set(d.dongs));
+    if (m && m[1] === cityName) guDongs.set(m[2], new Set([...d.dongs, ...(GU_HINTS[`${sido}|${d.sigungu}`]?.dongs ?? [])]));
   }
   return guDongs;
 }
@@ -166,6 +221,8 @@ function cityGuDongs(sido: string, cityName: string): Map<string, Set<string>> {
 export function resolveNeisDistrict(sido: string, row: NeisLocated): NeisResolution {
   const zone = row.sigungu.trim();
   if (sido === '세종') return { sigungu: '세종시' };
+  const legacy = LEGACY_ZONES[`${sido}|${zone}`];
+  if (legacy) return legacy.sido === sido ? { sigungu: legacy.sigungu } : legacy;
   if (findDistrict(sido, zone)) return { sigungu: zone };
   // 청주처럼 구 이름만 있는 경우: 같은 시·도에서 '○○시 {구}'가 하나뿐이면 그곳
   const byGu = DISTRICTS.filter((d) => d.sido === sido && d.sigungu.endsWith(` ${zone}`));
@@ -173,7 +230,7 @@ export function resolveNeisDistrict(sido: string, row: NeisLocated): NeisResolut
   // 일반구가 있는 시
   const guDongs = cityGuDongs(sido, zone);
   if (guDongs.size > 0) {
-    const gu = guOfRow(row, zone, guDongs);
+    const gu = guOfRow(row, zone, guDongs, sido);
     return gu ? { sigungu: `${zone} ${gu}` } : { bucket: zone };
   }
   if (sido === '인천' && ['중구', '동구', '서구'].includes(zone)) {
@@ -186,6 +243,21 @@ export function resolveNeisDistrict(sido: string, row: NeisLocated): NeisResolut
     }
     if (has(GEOMDAN_DONGS)) return { sigungu: '검단구' };
     return hasAnyDong ? { sigungu: '서해구' } : { bucket: '인천 옛 서구' };
+  }
+  // 다른 시·도로 옮겨 간 곳: 경북 교육청 자료의 '군위군'(2023년 대구 편입). 전국에 하나뿐인 이름이면 그곳
+  const elsewhere = DISTRICTS.filter((d) => d.sigungu === zone);
+  if (elsewhere.length === 1) return { sigungu: elsewhere[0].sigungu, sido: elsewhere[0].sido };
+  // 행정구역명이 비었거나 옛 이름('창원시(폐지)')이면 도로명 주소로 찾는다
+  const byAddress = districtFromAddress(row.roadAddress);
+  if (byAddress) return byAddress.sido === sido ? { sigungu: byAddress.sigungu } : { sigungu: byAddress.sigungu, sido: byAddress.sido };
+  // 주소에 일반구가 있는 시 이름만 있으면 그 시의 구를 동 이름으로 찾고, 못 찾으면 그 시의 구 미상으로
+  const parts = addressParts(row.roadAddress);
+  if (parts && parts.sidos.includes(sido)) {
+    const guDongs = cityGuDongs(sido, parts.sgg);
+    if (guDongs.size > 0) {
+      const gu = guOfRow(row, parts.sgg, guDongs, sido);
+      return gu ? { sigungu: `${parts.sgg} ${gu}` } : { bucket: parts.sgg };
+    }
   }
   return { bucket: zone || '지역 미상' };
 }

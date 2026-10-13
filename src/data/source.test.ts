@@ -8,7 +8,8 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 
 function manifest(): DataManifest {
   return {
-    version: 1,
+    version: 2,
+    sourceKind: 'api',
     updatedAt: '2026-10-12T18:00:00.000Z',
     sampleMode: false,
     source: 'test',
@@ -27,7 +28,8 @@ describe('정적 데이터 (매주 자동 업데이트)', () => {
     resetDataCaches();
     vi.stubGlobal(
       'fetch',
-      vi.fn((url: string) => {
+      vi.fn((input: string) => {
+        const url = input.split('?')[0];
         if (url === 'data/manifest.json') return json(manifest());
         if (url === 'data/d/41135.json') return json(assigned);
         if (url === 'data/b/0.json') return json(bucket);
@@ -69,11 +71,12 @@ describe('정적 데이터가 없을 때', () => {
     neisCalls = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn((url: string) => {
+      vi.fn((input: string) => {
+        const url = input.split('?')[0];
         if (url.startsWith('data/')) return json({}, 404);
         neisCalls++;
-        expect(url).toContain('KEY=test-key');
-        expect(url).toContain('ADMST_ZONE_NM=%EA%B0%95%EB%82%A8%EA%B5%AC');
+        expect(input).toContain('KEY=test-key');
+        expect(input).toContain('ADMST_ZONE_NM=%EA%B0%95%EB%82%A8%EA%B5%AC');
         return json({ acaInsTiInfo: [{ head: [{ list_total_count: rows.length }, { RESULT: { CODE: 'INFO-000', MESSAGE: '' } }] }, { row: rows }] });
       }),
     );

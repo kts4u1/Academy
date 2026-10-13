@@ -1,8 +1,8 @@
 import { CircleAlert, Database, KeyRound, LoaderCircle, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { DistrictState } from '../hooks';
-import { kstDate } from '../lib/format';
+import { useManifest, type DistrictState } from '../hooks';
+import { dotDate, kstDate } from '../lib/format';
 import type { DistrictData } from '../data/source';
 
 /** 아직 쓸 수 있는 데이터가 없을 때: 매주 자동 업데이트 설정 방법 안내 */
@@ -23,8 +23,9 @@ export function NoDataState({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <ol className="mt-4 flex list-decimal flex-col gap-2 pl-5 text-sm text-ink-2">
           <li>
-            <b className="text-ink">사이트로 운영할 때</b> · GitHub 저장소 Settings → Secrets and variables → Actions 에 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code> 를
-            등록하고, Settings → Pages 의 Source 를 GitHub Actions 로 바꾸세요. 매주 월요일 새벽에 자동으로 데이터를 받아 사이트를 다시 만듭니다.
+            <b className="text-ink">사이트로 운영할 때</b> · GitHub 저장소 Settings → Pages 의 Source 를 GitHub Actions 로 바꾸고 Actions 탭에서 ‘교육청 데이터 주간 업데이트’를
+            실행하세요. 인증키가 없어도 교육청이 매달 올리는 전국 파일로 만들고, Secrets 에 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code> 를 등록하면 매주 최신
+            자료로 바뀝니다.
           </li>
           <li>
             <b className="text-ink">이 브라우저에서 바로 보기</b> · 설정에 인증키를 넣으면 고른 시·군·구만 교육청에서 직접 받아 7일 동안 보관합니다.
@@ -79,21 +80,35 @@ export function DistrictGate({ state, onRetry, children }: { state: DistrictStat
   return <>{children(state.data)}</>;
 }
 
-/** 데이터 출처·기준일 한 줄 */
-export function DataStamp({ data, onReload }: { data: DistrictData; onReload?: () => void }) {
+/** 데이터 출처·기준일 한 줄. error: 데이터는 있는데 '지금 다시 받기'가 실패했을 때 */
+export function DataStamp({ data, onReload, error }: { data: DistrictData; onReload?: () => void; error?: string | null }) {
+  const { manifest } = useManifest();
+  const label =
+    data.mode === 'live'
+      ? `내 인증키로 받음 ${kstDate(data.updatedAt)}`
+      : manifest?.sourceKind === 'file' && manifest.baseDate
+        ? `교육청 전국 파일 ${dotDate(manifest.baseDate)} 기준`
+        : `자동 업데이트 ${kstDate(data.updatedAt)}`;
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-3">
-      <span>
-        교육청 학원교습소정보 · {data.mode === 'static' ? '자동 업데이트' : '내 인증키로 받음'} {kstDate(data.updatedAt)}
-        {data.sampleMode && <b className="ml-1 font-semibold text-pricey">표본(일부만)</b>}
-      </span>
-      {data.mode === 'live' && onReload && (
-        <button type="button" onClick={onReload} className="inline-flex items-center gap-1 font-semibold text-accent hover:underline">
-          <RefreshCw aria-hidden="true" className="h-3 w-3" />
-          지금 다시 받기
-        </button>
+    <div className="text-[12px] text-ink-3">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>
+          교육청 학원교습소정보 · {label}
+          {data.sampleMode && <b className="ml-1 font-semibold text-pricey">표본(일부만)</b>}
+        </span>
+        {data.mode === 'live' && onReload && (
+          <button type="button" onClick={onReload} className="inline-flex items-center gap-1 font-semibold text-accent hover:underline">
+            <RefreshCw aria-hidden="true" className="h-3 w-3" />
+            지금 다시 받기
+          </button>
+        )}
+      </p>
+      {error && (
+        <p role="alert" className="mt-1 font-semibold text-pricey">
+          다시 받지 못해 보관해 둔 자료를 보여 드려요: {error}
+        </p>
       )}
-    </p>
+    </div>
   );
 }
 

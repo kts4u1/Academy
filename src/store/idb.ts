@@ -47,6 +47,8 @@ export async function idbSet(key: string, value: unknown): Promise<void> {
       tx.objectStore(STORE).put(value, key);
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
+      // 저장 공간이 모자라면 error 없이 abort 만 온다
+      tx.onabort = () => resolve();
     } catch {
       resolve();
     }
@@ -63,6 +65,8 @@ export async function idbClear(): Promise<void> {
       tx.objectStore(STORE).clear();
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
+      // 저장 공간이 모자라면 error 없이 abort 만 온다
+      tx.onabort = () => resolve();
     } catch {
       resolve();
     }

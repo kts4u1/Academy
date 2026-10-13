@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | ![홈](docs/screenshots/home.png) | ![검색](docs/screenshots/search.png) | ![상세](docs/screenshots/detail.png) | ![시세](docs/screenshots/market.png) |
 
-> 스크린샷은 인증키 없이 모은 교육청 표본(617곳)으로 찍었습니다. 인증키를 등록하면 전국 자료(교육청 등록 약 14만 건)로 바뀝니다.
+> 스크린샷은 교육청 전국 파일(2026-09-30 기준, 학원·교습소 138,518곳 · 교습비 공개 28,356곳)로 찍었습니다.
 
 ## 데이터는 어디서 오나
 
@@ -14,6 +14,7 @@
 | --- | --- |
 | 학원·교습소 이름, 주소, 전화, 정원, 설립일, 분야 | 나이스 교육정보 개방 포털 [학원교습소정보](https://open.neis.go.kr) (`acaInsTiInfo`), 전국 17개 시·도교육청 |
 | 과정별 신고 교습비 | 같은 자료의 `인당수강료내용` (예: `중등수학:320000, 고등수학:450000`) |
+| 받는 방법 | 인증키가 있으면 Open API 로 매주 최신 자료, 없거나 API 가 실패하면 교육청이 매달 올리는 전국 파일(CSV, 인증키 불필요) |
 | 시·도, 시·군·구, 동 이름 | [vuski/admdongkor](https://github.com/vuski/admdongkor) 행정동 경계 2026-07 (전국 256개 시·군·구) |
 | 평점·후기·임의 가격 | 없음. 공식 자료에 없는 값은 비워 둡니다 |
 
@@ -27,14 +28,13 @@
 
 GitHub Actions(`.github/workflows/update-data.yml`)가 매주 월요일 03:00(한국 시간)에 전국 자료를 받아 GitHub Pages 사이트를 다시 만듭니다.
 
-1. [open.neis.go.kr](https://open.neis.go.kr) 에서 인증키를 발급받습니다 (무료).
-2. 저장소 **Settings → Secrets and variables → Actions → New repository secret** 에서 이름 `NEIS_KEY`, 값에 인증키를 넣습니다. (키를 코드나 채팅에 붙여 넣지 마세요.)
-3. **Settings → Pages → Build and deployment → Source** 를 `GitHub Actions` 로 바꿉니다.
-4. **Actions → 교육청 데이터 주간 업데이트 → Run workflow** 로 처음 한 번 실행합니다. 끝나면 `https://<계정>.github.io/<저장소>/` 에서 열립니다.
+1. 저장소 **Settings → Pages → Build and deployment → Source** 를 `GitHub Actions` 로 바꿉니다.
+2. (권장) [open.neis.go.kr](https://open.neis.go.kr) 에서 인증키를 발급받아, 저장소 **Settings → Secrets and variables → Actions → New repository secret** 에 이름 `NEIS_KEY` 로 넣습니다. (키를 코드나 채팅에 붙여 넣지 마세요.) 없으면 교육청 전국 파일(매달 갱신)로 만듭니다.
+3. **Actions → 교육청 데이터 주간 업데이트 → Run workflow** 로 처음 한 번 실행합니다. 끝나면 `https://<계정>.github.io/<저장소>/` 에서 열립니다.
 
-- 코드만 바뀐 push 는 이번 주에 이미 받은 데이터를 다시 쓰고, 월요일 정기 실행과 수동 실행은 항상 새로 받습니다.
-- 교육청 서버 오류로 받다가 실패하면 배포하지 않으므로 지난번 사이트가 그대로 남습니다.
-- `NEIS_KEY` 가 없으면 데이터 없이 배포되고, 사이트에 설정 방법이 안내됩니다.
+- 받은 원자료(`.neis-raw/`)를 Actions 캐시에 보관해서, 코드만 바뀐 push 는 이번 주 원자료를 새 코드로 다시 가공합니다. 월요일 정기 실행과 수동 실행은 항상 새로 받습니다.
+- 받다가 실패하면(교육청 한 곳이라도 빠지거나 중간에 끊기면) 배포하지 않으므로 지난번 사이트가 그대로 남습니다. API 가 실패하면 전국 파일로 대신 만들고 Actions 화면에 경고를 남깁니다.
+- 공개 저장소의 예약 실행은 60일 동안 활동이 없으면 꺼지므로 매 실행마다 다시 켜 둡니다. 그래도 9일 넘게 갱신되지 않으면 사이트 위쪽에 알립니다.
 
 ## 주요 기능
 
@@ -52,26 +52,27 @@ GitHub Actions(`.github/workflows/update-data.yml`)가 매주 월요일 03:00(�
 
 - 과정 이름으로 과목(34개 중 교과·예술 25개)과 대상 연령, 주당 횟수를 가려냅니다. 이름에 과목이 없으면 학원 이름·교육청 분류로 짐작합니다.
 - 특강·방학 캠프·교재비·재료비·클리닉·보충·1:1 개인 레슨, 3만원 이하·300만원 초과 금액은 월 교습비로 보기 어려워 시세에서 뺍니다.
-- **시세는 학원마다 한 표**: 과정을 여러 개 신고한 곳은 해당 과정 금액의 중앙값 하나만 셉니다. 같은 시·군·구에 3곳 이상일 때 시세를 내고, 모자라면 시·도 전체로 넓힙니다.
+- **시세는 학원마다 한 표**: 과정을 여러 개 신고한 곳은 조건에 맞는 과정 가운데 금액이 가운데인 ‘대표 과정’ 하나만 셉니다. 검색 카드의 대표 금액과 ‘저렴·비쌈’ 배지도 같은 과정으로 계산합니다. 같은 시·군·구에 3곳 이상일 때 시세를 내고, 모자라면 시·도 전체로 넓힙니다.
 - 대상이 하나로 정해진 과정(예: 고등 수학)은 같은 대상 시세와만 비교합니다.
-- 일반구가 있는 시는 교육청 자료가 대부분 시 단위(‘성남시’, 청주만 구 단위)라서 주소의 구·동 이름으로 구를 정합니다. 못 정한 곳은 ‘구 미상’으로 같은 시의 각 구 검색에 함께 보여 주고, 그런 곳이 절반을 넘으면(예: 2026년에 일반구가 생긴 화성시) 안내합니다. 인천 옛 중구·서구는 주소의 동·도로명으로 새 구에 나눕니다.
+- 일반구가 있는 시는 교육청 자료가 대부분 시 단위(‘성남시’, 청주만 구 단위)라서 주소의 구·동 이름으로 구를 정합니다(2026년에 생긴 화성시 동탄구는 법정동·‘동탄○○로’ 도로명까지). 못 정한 곳(전국 약 400곳)은 ‘구 미상’으로 같은 시의 각 구 검색에 함께 보여 줍니다. 인천 옛 중구·서구는 주소의 동·도로명으로 새 구에 나누고, 행정구역명이 비었거나 옛 이름(연기군·군위군·창원시(폐지))이면 도로명 주소로 찾습니다.
 
 ## 데이터 만들기 (로컬)
 
 ```bash
-NEIS_KEY=발급키 npm run data:update                    # 전국 → public/data/
-NEIS_KEY=발급키 npm run data:update -- --offices B10   # 서울만
-npm run data:update -- --sample                        # 인증키 없이 교육청별 5건 (동작 확인용)
-npm run data:update -- --from-raw rows.json            # 저장해 둔 교육청 원자료(JSON 배열)로
+NEIS_KEY=발급키 npm run data:update                    # Open API 로 전국 → public/data/
+npm run data:update                                    # 인증키 없이 교육청 전국 파일(CSV)로
+NEIS_KEY=발급키 npm run data:update -- --offices B10   # (API) 서울만 – 개발용
+npm run data:update -- --from-raw .neis-raw            # 보관해 둔 원자료로 다시 가공
+npm run data:update -- --from-raw 학원교습소정보.csv     # 내려받아 둔 전국 파일로
 ```
 
 결과물(`public/data/`, 저장소에는 올리지 않음)
 
 | 파일 | 내용 |
 | --- | --- |
-| `manifest.json` | 갱신 시각, 교육청별 건수, 시·군·구별 학원 수와 파일 이름 |
+| `manifest.json` | 갱신 시각, 출처(API·전국 파일과 기준일), 교육청별 건수, 시·군·구별 학원 수와 파일 이름 |
 | `d/{시군구코드}.json` | 그 지역 학원·교습소와 과정별 교습비 |
-| `b/{번호}.json` | 주소로 구를 정하지 못한 학원 (예: 성남시 · 구 미상) |
+| `b/{이름 해시}.json` | 주소로 구를 정하지 못한 학원 (예: 부천시 · 구 미상) |
 | `market.json` | 시·군·구·시·도별 과목 × 대상 시세 |
 
 정적 데이터가 없을 때는 **설정에 인증키를 넣으면** 고른 시·군·구만 브라우저에서 교육청에 바로 요청하고, IndexedDB 에 7일 동안 보관했다가 다시 받습니다.
@@ -97,17 +98,19 @@ python3 scripts/build_districts.py HangJeongDong_ver20260701.geojson   # → src
 
 ```
 scripts/
-  update-data.ts         교육청 전국 자료 → public/data/ (GitHub Actions 가 매주 실행)
+  update-data.ts         교육청 자료 받기(API·전국 파일) → 원자료 보관 → public/data/ (GitHub Actions 가 매주 실행)
   build_districts.py     행정동 경계 → src/data/districts.ts
 src/
   data/
     categories.ts        과목 분류 (체육은 교육청 자료 없음 표시)
     districts.ts         전국 256개 시·군·구·행정동 (자동 생성)
     regions.ts           시도교육청 코드, 교육청 행정구역명 ↔ 앱 시·군·구 배정 규칙
+    buildData.ts         원자료 → 시·군·구 파일·시세·목록 (가공)
     manifest.ts          정적 데이터 목록 형식
     source.ts            정적 파일 읽기 / 내 인증키로 바로 받기(7일 보관)
   lib/
     neis.ts              나이스 API 클라이언트 · 교습비 파서
+    neisFile.ts          교육청 전국 파일(CSV) 찾기·받기·읽기
     neisClassify.ts      과정 이름 → 과목·대상·주당 횟수, 비교 제외 항목
     realData.ts          학원 데이터 형식 · 시세(학원당 한 표) · 시세 대비 위치
     realSearch.ts        검색어 해석 · 검색 · 더 저렴한 곳

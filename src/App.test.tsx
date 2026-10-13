@@ -16,7 +16,8 @@ const gangnam = [
 ];
 
 const manifest: DataManifest = {
-  version: 1,
+  version: 2,
+    sourceKind: 'api',
   updatedAt: '2026-10-12T18:00:00.000Z',
   sampleMode: false,
   source: 'test',
@@ -29,7 +30,8 @@ const manifest: DataManifest = {
 function serve(withData: boolean) {
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn((input: string) => {
+      const url = input.split('?')[0];
       if (!withData) return json({}, 404);
       if (url === 'data/manifest.json') return json(manifest);
       if (url === 'data/d/11680.json') return json(gangnam);

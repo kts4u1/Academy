@@ -25,6 +25,39 @@ describe('parseQuery', () => {
     expect(parseQuery('광주특별시', { sido: '광주', sigungu: '서구' })).toMatchObject({ sido: '광주', sigungu: '서구' });
   });
 
+  it("'시 구' 처럼 지역 낱말이 여럿이면 차례로 좁힌다", () => {
+    expect(parseQuery('성남시 중원구 수학')).toMatchObject({ sido: '경기', sigungu: '성남시 중원구', subject: 'math', text: '' });
+    expect(parseQuery('고양시 일산서구 영어')).toMatchObject({ sigungu: '고양시 일산서구', text: '' });
+    expect(parseQuery('포항 북구 수학')).toMatchObject({ sido: '경북', sigungu: '포항시 북구' });
+    expect(parseQuery('분당 정자동 피아노')).toMatchObject({ sigungu: '성남시 분당구', subject: 'piano', text: '' });
+  });
+
+  it("'서울시'·'부산시' 같은 줄임말과 '광주시 광산구'", () => {
+    expect(parseQuery('서울시 강남구 영어')).toMatchObject({ sido: '서울', sigungu: '강남구', text: '' });
+    expect(parseQuery('부산시 강서구 수학', { sido: '서울', sigungu: '마포구' })).toMatchObject({ sido: '부산', sigungu: '강서구' });
+    expect(parseQuery('광주시 광산구 피아노')).toMatchObject({ sido: '광주', sigungu: '광산구', subject: 'piano' });
+    expect(parseQuery('광주시 영어')).toMatchObject({ sido: '경기', sigungu: '광주시' });
+  });
+
+  it('대상 낱말과 과목을 동 이름보다 먼저 알아듣는다', () => {
+    expect(parseQuery('고등 수학', { sido: '서울', sigungu: '강남구' })).toMatchObject({ age: 'high', subject: 'math', text: '' });
+    expect(parseQuery('고등 수학').sigungu).toBeUndefined();
+    expect(parseQuery('일산 영어', { sido: '울산', sigungu: '남구' })).toMatchObject({ sido: '경기', sigungu: '고양시 일산동구' });
+    expect(parseQuery('마산 피아노')).toMatchObject({ sido: '경남', sigungu: '창원시 마산합포구' });
+  });
+
+  it("'학원'·'레슨' 같은 말은 버리고 '피아노학원'은 과목으로", () => {
+    expect(parseQuery('분당 피아노 학원')).toMatchObject({ subject: 'piano', text: '' });
+    expect(parseQuery('목동 영어학원')).toMatchObject({ sigungu: '양천구', subject: 'english', text: '' });
+    expect(parseQuery('강남구 피아노 레슨')).toMatchObject({ subject: 'piano', text: '' });
+  });
+
+  it('여러 과목에 걸치는 말은 과목으로 정하지 않는다', () => {
+    expect(parseQuery('강남 보습').subject).toBeUndefined();
+    expect(parseQuery('강남 실용음악').subject).toBeUndefined();
+    expect(parseQuery('대치동 내신')).toMatchObject({ sigungu: '강남구', text: '내신' });
+  });
+
   it('지역·과목이 아니면 학원 이름 검색어로 남긴다', () => {
     expect(parseQuery('해법 수학')).toMatchObject({ subject: 'math', text: '해법' });
     expect(parseQuery('')).toEqual({ text: '' });
@@ -47,8 +80,8 @@ describe('searchAcademies', () => {
   it('과목·대상으로 찾고 교습비를 모르는 곳은 가격순에서 뒤로', () => {
     const hits = searchAcademies(data, { ...EMPTY_FILTERS, subject: 'english', age: 'elementary' }, rows, 'price');
     expect(hits.map((h) => h.academy.name)).toEqual(['가영어', '나영어', '다영어', '라영어학원']);
-    expect(hits[0].best?.price).toBe(200000);
-    expect(hits[3].best).toBeNull();
+    expect(hits[0].rep?.price).toBe(200000);
+    expect(hits[3].rep).toBeNull();
   });
 
   it('교습비 공개된 곳만', () => {
@@ -82,6 +115,23 @@ describe('searchAcademies', () => {
     expect(alt.map((x) => x.academy.name)).toEqual(['가영어', '나영어']);
   });
 
+  it('더 저렴한 곳은 대상이 겹치는 과정만 본다', () => {
+    const highAdult = academy({ ACA_NM: '사미술', REALM_SC_NM: '예능(대)', LE_CRSE_NM: '미술', PSNBY_THCC_CNTNT: '고등성인:200000' });
+    const kids = academy({ ACA_NM: '아미술', REALM_SC_NM: '예능(대)', LE_CRSE_NM: '미술', PSNBY_THCC_CNTNT: '미술(유.초등):70000' });
+    const high = academy({ ACA_NM: '자미술', REALM_SC_NM: '예능(대)', LE_CRSE_NM: '미술', PSNBY_THCC_CNTNT: '고등입시:150000' });
+    const d2 = district([highAdult, kids, high]);
+    expect(highAdult.courses[0].ages).toEqual(expect.arrayContaining(['high']));
+    expect(cheaperAlternatives(d2, highAdult, highAdult.courses[0]).map((x) => x.academy.name)).toEqual(['자미술']);
+  });
+
+  it('대표 과정은 맞는 과정 가운데 금액이 가운데인 것', () => {
+    const many = academy({ ACA_NM: '차영어', PSNBY_THCC_CNTNT: '초등영어A:50000, 초등영어B:240000, 초등영어C:260000, 초등영어D:900000' });
+    const hits = searchAcademies(district([a, b, c, many]), { ...EMPTY_FILTERS, subject: 'english', age: 'elementary' }, buildMarket([a, b, c, many]), 'price');
+    const hit = hits.find((h) => h.academy.name === '차영어')!;
+    expect(hit.rep?.price).toBe(240000);
+    expect(hit.level).not.toBe('very_low');
+  });
+
   it('대상이 정해진 과정은 같은 대상 시세와만 비교한다', () => {
     const high = academy({ ACA_NM: '바영어', PSNBY_THCC_CNTNT: '고등영어:500000' });
     expect(marketForCourse(rows, high, high.courses[0])).toBeNull();
@@ -92,6 +142,6 @@ describe('searchAcademies', () => {
     const m = marketForCourse(rows, { sido: '서울', sigungu: '서초구' }, a.courses[0]);
     expect(m?.widened).toBe(true);
     expect(marketScopeName(m!.row, 'static')).toBe('서울 전체');
-    expect(marketScopeName(m!.row, 'live', { sigungu: '서초구' })).toBe('서초구 일대');
+    expect(marketScopeName(m!.row, 'live')).toBe('받은 지역 전체');
   });
 });

@@ -6,3 +6,4 @@ dist-single
 coverage
 public/data/
 public/.data-tmp/
+.neis-raw/

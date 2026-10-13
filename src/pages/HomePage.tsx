@@ -1,7 +1,7 @@
 import { ChevronRight, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LoadingState, NoDataState } from '../components/DataState';
+import { ErrorState, LoadingState, NoDataState } from '../components/DataState';
 import { RegionPicker } from '../components/RegionPicker';
 import { Section, SubjectTile } from '../components/ui';
 import { GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
@@ -20,7 +20,7 @@ export function searchPath(p: { sido?: string; sigungu?: string; subject?: strin
 }
 
 function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
-  const { mode, manifest } = useAvailability();
+  const { loading, mode, manifest, error, retry } = useAvailability();
   // 정적 데이터면 전국 시세 파일만 있으면 되고, 브라우저에서 받는 경우에만 지역 데이터를 받는다
   const district = useDistrictData(mode === 'live' ? sido : '', mode === 'live' ? sigungu : '');
   const market = useMarket([district.data]);
@@ -33,8 +33,12 @@ function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
     return rows.sort((a, b) => b.academies - a.academies || b.n - a.n).slice(0, 8);
   }, [market.rows, sido, sigungu]);
 
+  if (loading) return <LoadingState />;
+  if (mode === 'error') return <ErrorState message={error ?? '데이터를 불러오지 못했어요.'} onRetry={retry} />;
   if (mode === 'none') return <NoDataState compact />;
   if (mode === 'live' && district.status === 'loading') return <LoadingState message={district.progress} />;
+  if (mode === 'live' && district.status === 'error') return <ErrorState message={district.error ?? '데이터를 불러오지 못했어요.'} onRetry={district.reload} />;
+  if (market.error) return <ErrorState message={market.error} onRetry={() => window.location.reload()} />;
   if (market.loading) return <LoadingState />;
 
   return (
@@ -60,7 +64,7 @@ function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
                 <span className="num text-[11px] text-ink-3">
                   보통 {manwon(r.p25)}~{manwon(r.p75)} · {r.academies}곳
                 </span>
-                <span className="text-[11px] text-ink-3">{marketScopeName(r, market.mode ?? 'static', { sigungu })} 월 교습비 중앙값</span>
+                <span className="text-[11px] text-ink-3">{marketScopeName(r, market.mode ?? 'static')} 월 교습비 중앙값</span>
               </Link>
             </li>
           ))}
@@ -79,7 +83,7 @@ export function HomePage() {
 
   const go = (text: string) => {
     const parsed = parseQuery(text, home);
-    navigate(searchPath({ sido: parsed.sido ?? home?.sido, sigungu: parsed.sigungu ?? home?.sigungu, subject: parsed.subject, q: parsed.text }));
+    navigate(searchPath({ sido: parsed.sido ?? home?.sido, sigungu: parsed.sigungu ?? home?.sigungu, subject: parsed.subject, age: parsed.age, q: parsed.text }));
   };
 
   return (

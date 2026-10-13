@@ -115,6 +115,18 @@ describe('NEIS 응답 처리', () => {
     expect(bad).toHaveBeenCalledTimes(1);
   });
 
+  it('HTTP 200 으로 오는 교육청 서버 오류(ERROR-500)도 다시 시도하고, 인증키 오류는 바로 알린다', async () => {
+    let n = 0;
+    const blip = vi.fn(async () =>
+      new Response(JSON.stringify(++n < 2 ? { RESULT: { CODE: 'ERROR-500', MESSAGE: '서버 오류' } } : { RESULT: { CODE: 'INFO-200', MESSAGE: '' } })),
+    );
+    await expect(fetchNeisAcademies({ key: 'k', officeCode: 'B10' }, blip as unknown as typeof fetch, [0, 0])).resolves.toMatchObject({ total: 0, raw: [] });
+    expect(blip).toHaveBeenCalledTimes(2);
+    const badKey = vi.fn(async () => new Response(JSON.stringify({ RESULT: { CODE: 'ERROR-290', MESSAGE: '인증키가 유효하지 않습니다.' } })));
+    await expect(fetchNeisAcademies({ key: 'k', officeCode: 'B10' }, badKey as unknown as typeof fetch, [0, 0])).rejects.toMatchObject({ code: 'ERROR-290' });
+    expect(badKey).toHaveBeenCalledTimes(1);
+  });
+
   it('URL 구성 – 인증키가 없으면 5건 샘플 모드', async () => {
     expect(buildNeisUrl({ officeCode: 'B10', sigungu: '마포구', name: '수학' })).toContain('ADMST_ZONE_NM=%EB%A7%88%ED%8F%AC%EA%B5%AC');
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ RESULT: { CODE: 'INFO-200', MESSAGE: '' } })));

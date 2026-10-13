@@ -1,37 +1,47 @@
-// 교육청(NEIS) 학원교습소정보를 전국에서 내려받아 앱이 읽는 정적 데이터 파일을 만든다.
+// 교육청(NEIS) 학원교습소정보를 전국에서 받아 앱이 읽는 정적 데이터 파일을 만든다.
 // GitHub Actions 가 매주 실행한다 (.github/workflows/update-data.yml).
 //
-//   NEIS_KEY=발급키 npm run data:update              전국 17개 교육청
-//   NEIS_KEY=발급키 npm run data:update -- --offices B10,F10   일부 교육청만
-//   npm run data:update -- --sample                  인증키 없이 교육청별 5건 (동작 확인용)
-//   npm run data:update -- --from-raw rows.json      저장해 둔 교육청 원자료(JSON 배열)로 만들기 (개발용 표본)
+//   NEIS_KEY=발급키 npm run data:update        Open API 로 전국 17개 교육청 (매주 최신)
+//   npm run data:update                       인증키가 없으면 교육청이 매달 올리는 전국 파일(CSV)
+//   npm run data:update -- --source file      인증키가 있어도 전국 파일로
+//   npm run data:update -- --offices B10,F10  (API) 일부 교육청만 – 개발용
+//   npm run data:update -- --from-raw .neis-raw        보관해 둔 원자료로 다시 가공 (코드만 바뀌었을 때)
+//   npm run data:update -- --from-raw rows.json|x.csv  원자료 JSON 배열(개발용 표본) 또는 교육청 CSV 로
 //
-// 결과 (public/data/):
-//   manifest.json        갱신 시각, 지역별 학원 수, 파일 목록
-//   d/{시군구코드}.json   시·군·구별 학원·교습소와 과정별 교습비
-//   b/{번호}.json         주소로 구를 정하지 못한 학원 (예: 성남시 · 구 미상)
-//   market.json          시·군·구·시·도별 과목×연령 교습비 시세
+// API 로 받다가 실패하면(인증키 오류·서버 장애·중간에 끊김) 전국 파일로 대신 만든다.
+// 둘 다 실패하면 아무것도 바꾸지 않고 오류로 끝난다 → 지난번 배포가 그대로 남는다.
 //
-// 한 교육청이라도 받다가 실패하면 기존 데이터를 그대로 두고 오류로 끝낸다.
+// 결과
+//   .neis-raw/            교육청 원자료 (Actions 캐시에 보관했다가 코드만 바뀐 push 때 다시 가공)
+//   public/data/manifest.json        갱신 시각, 출처, 지역별 학원 수, 파일 목록
+//   public/data/d/{시군구코드}.json   시·군·구별 학원·교습소와 과정별 교습비
+//   public/data/b/{이름 해시}.json    주소로 구를 정하지 못한 학원 (예: 성남시 · 구 미상)
+//   public/data/market.json          시·군·구·시·도별 과목 × 대상 교습비 시세
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DISTRICTS, EDU_OFFICES } from '../src/data/regions';
-import { fetchAllNeisAcademies, neisErrorMessage, toNeisAcademy, type NeisRawRow } from '../src/lib/neis';
-import { buildMarket, toRealAcademy, type RealAcademy } from '../src/lib/realData';
-import type { DataManifest } from '../src/data/manifest';
+import { buildOutput, type RawSnapshot } from '../src/data/buildData';
+import { EDU_OFFICES } from '../src/data/regions';
+import { fetchAllNeisAcademies, neisErrorMessage, type NeisRawRow } from '../src/lib/neis';
+import { baseDateOf, csvToRawRows, decodeKorean, downloadNeisFile, findLatestNeisFile } from '../src/lib/neisFile';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'public', 'data');
 const tmpDir = join(root, 'public', '.data-tmp');
+const rawDir = join(root, '.neis-raw');
 
 function parseArgs(argv: string[]) {
   const get = (name: string) => {
     const i = argv.indexOf(`--${name}`);
     return i >= 0 ? argv[i + 1] : undefined;
   };
-  return { sample: argv.includes('--sample'), fromRaw: get('from-raw'), offices: get('offices')?.split(',').map((s) => s.trim()) };
+  const source = get('source');
+  return {
+    source: source === 'file' || source === 'api' ? source : undefined,
+    fromRaw: get('from-raw'),
+    offices: get('offices')?.split(',').map((s) => s.trim()),
+  };
 }
 
 function writeJson(path: string, data: unknown) {
@@ -39,112 +49,123 @@ function writeJson(path: string, data: unknown) {
   writeFileSync(path, JSON.stringify(data));
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const key = process.env.NEIS_KEY?.trim() ?? '';
-  if (!key && !args.sample && !args.fromRaw) {
-    console.log('NEIS_KEY 가 없어 교육청 데이터를 받지 않았습니다. (기존 데이터 유지)');
-    console.log('GitHub: 저장소 Settings → Secrets and variables → Actions → New repository secret → 이름 NEIS_KEY');
-    return;
-  }
+function groupByOffice(rows: NeisRawRow[]): RawSnapshot['offices'] {
+  const by = new Map<string, NeisRawRow[]>();
+  for (const r of rows) by.set(r.ATPT_OFCDC_SC_CODE, [...(by.get(r.ATPT_OFCDC_SC_CODE) ?? []), r]);
+  return Array.from(by.entries(), ([code, list]) => ({ code, total: list.length, rows: list }));
+}
 
-  const offices = EDU_OFFICES.filter((o) => !args.offices || args.offices.includes(o.code));
-  const academies: RealAcademy[] = [];
-  const officeStats: DataManifest['offices'] = [];
-  let skippedClosed = 0;
+// ───────────── 받기 ─────────────
 
-  if (args.fromRaw) {
-    const raw = JSON.parse(readFileSync(args.fromRaw, 'utf8')) as NeisRawRow[];
-    const byId = new Map(raw.map((r) => [`${r.ATPT_OFCDC_SC_CODE}-${r.ACA_ASNUM}`, r]));
-    for (const r of byId.values()) {
-      const office = EDU_OFFICES.find((o) => o.code === r.ATPT_OFCDC_SC_CODE);
-      const row = toNeisAcademy(r);
-      if (!office || (row.status && row.status !== '개원')) continue;
-      academies.push(toRealAcademy(row, office.sido));
-    }
-    console.log(`원자료 ${byId.size.toLocaleString()}곳을 읽었습니다.`);
-  }
-
-  for (const office of args.fromRaw ? [] : offices) {
+async function fetchFromApi(key: string, only?: string[]): Promise<RawSnapshot> {
+  const offices: RawSnapshot['offices'] = [];
+  for (const office of EDU_OFFICES.filter((o) => !only || only.includes(o.code))) {
     process.stdout.write(`${office.office} (${office.code}) … `);
-    try {
-      const r = await fetchAllNeisAcademies(
-        { key: args.sample ? undefined : key, officeCode: office.code },
-        { maxRows: Number.POSITIVE_INFINITY, pageDelayMs: 300 },
-      );
-      let kept = 0;
-      for (const row of r.rows) {
-        if (row.status && row.status !== '개원') {
-          skippedClosed++;
-          continue;
-        }
-        academies.push(toRealAcademy(row, office.sido));
-        kept++;
-      }
-      officeStats.push({ code: office.code, sido: office.sido, total: r.total, fetched: r.rows.length, kept });
-      console.log(`${r.rows.length.toLocaleString()} / ${r.total.toLocaleString()}건`);
-    } catch (err) {
-      console.error(`\n실패: ${neisErrorMessage(err)}\n기존 데이터를 그대로 둡니다.`);
-      process.exit(1);
-    }
+    const r = await fetchAllNeisAcademies({ key, officeCode: office.code }, { maxRows: Number.POSITIVE_INFINITY, pageDelayMs: 300 });
+    // 중간 페이지가 비어 끊기거나(교육청 자료 갱신 중 등) 한 곳도 없으면 반쪽 데이터를 배포하지 않는다
+    if (r.total === 0) throw new Error(`${office.office}: 학원이 0곳으로 나왔습니다.`);
+    if (r.truncated || r.raw.length < r.total * 0.99) throw new Error(`${office.office}: ${r.total.toLocaleString()}곳 중 ${r.raw.length.toLocaleString()}곳만 받았습니다.`);
+    offices.push({ code: office.code, total: r.total, rows: r.raw });
+    console.log(`${r.raw.length.toLocaleString()} / ${r.total.toLocaleString()}건`);
   }
+  return { kind: 'api', fetchedAt: new Date().toISOString(), offices };
+}
 
-  // 시·군·구별로 나누기
+async function fetchFromFile(): Promise<RawSnapshot> {
+  const file = await findLatestNeisFile();
+  console.log(`교육청 전국 파일: ${file.name} (기준일 ${file.baseDate})`);
+  const rows = csvToRawRows(await downloadNeisFile(file.fileSeq));
+  return { kind: 'file', fetchedAt: new Date().toISOString(), baseDate: file.baseDate, fileName: file.name, offices: groupByOffice(rows) };
+}
+
+/** 전국 자료가 빠짐없이 들어 있는지 (일부 교육청만 받은 개발용 실행은 제외) */
+function checkComplete(snap: RawSnapshot) {
+  const codes = new Set(snap.offices.filter((o) => o.rows.length > 0).map((o) => o.code));
+  const missing = EDU_OFFICES.filter((o) => !codes.has(o.code));
+  if (missing.length) throw new Error(`교육청 자료가 빠졌습니다: ${missing.map((o) => o.office).join(', ')}`);
+}
+
+function saveRaw(snap: RawSnapshot) {
+  rmSync(rawDir, { recursive: true, force: true });
+  mkdirSync(rawDir, { recursive: true });
+  const { offices, ...meta } = snap;
+  writeJson(join(rawDir, 'meta.json'), { ...meta, offices: offices.map((o) => ({ code: o.code, total: o.total })) });
+  for (const o of offices) writeJson(join(rawDir, `rows-${o.code}.json`), o.rows);
+}
+
+function loadRaw(path: string): RawSnapshot {
+  if (statSync(path).isDirectory()) {
+    const meta = JSON.parse(readFileSync(join(path, 'meta.json'), 'utf8')) as Omit<RawSnapshot, 'offices'> & { offices: { code: string; total: number }[] };
+    const files = new Set(readdirSync(path));
+    return {
+      ...meta,
+      offices: meta.offices.map((o) => ({ ...o, rows: files.has(`rows-${o.code}.json`) ? (JSON.parse(readFileSync(join(path, `rows-${o.code}.json`), 'utf8')) as NeisRawRow[]) : [] })),
+    };
+  }
+  if (path.toLowerCase().endsWith('.csv')) {
+    const rows = csvToRawRows(decodeKorean(new Uint8Array(readFileSync(path))));
+    // 파일 이름에 기준일이 있으면 쓴다: 학원교습소정보_2026년09월30일기준.csv, academies-2026-09-30.csv
+    const name = basename(path);
+    const iso = name.match(/(\d{4})-(\d{2})-(\d{2})/);
+    const baseDate = baseDateOf(name) ?? (iso ? iso[0] : undefined);
+    return { kind: 'file', fetchedAt: statSync(path).mtime.toISOString(), ...(baseDate ? { baseDate } : {}), fileName: name, offices: groupByOffice(rows) };
+  }
+  // 개발용 표본: 원자료 JSON 배열
+  const rows = JSON.parse(readFileSync(path, 'utf8')) as NeisRawRow[];
+  return { kind: 'sample', fetchedAt: new Date().toISOString(), offices: groupByOffice(rows) };
+}
+
+function writeOutput(files: Map<string, unknown>) {
   rmSync(tmpDir, { recursive: true, force: true });
-  const byDistrict = new Map<string, RealAcademy[]>();
-  const byBucket = new Map<string, RealAcademy[]>();
-  for (const a of academies) {
-    const k = `${a.sido}|${a.sigungu}`;
-    const map = a.unassigned ? byBucket : byDistrict;
-    map.set(k, [...(map.get(k) ?? []), a]);
-  }
-  const sortAcademies = (list: RealAcademy[]) => list.sort((x, y) => x.name.localeCompare(y.name, 'ko'));
-  const priced = (list: RealAcademy[]) => list.filter((a) => a.courses.length > 0).length;
-
-  const districts: DataManifest['districts'] = DISTRICTS.map((d) => {
-    const list = sortAcademies(byDistrict.get(`${d.sido}|${d.sigungu}`) ?? []);
-    const file = `d/${d.code}.json`;
-    if (list.length) writeJson(join(tmpDir, file), list);
-    return { sido: d.sido, sigungu: d.sigungu, code: d.code, file: list.length ? file : null, academies: list.length, priced: priced(list) };
-  });
-  const buckets: DataManifest['buckets'] = Array.from(byBucket.entries()).map(([k, list], i) => {
-    const [sido, name] = k.split('|');
-    const file = `b/${i}.json`;
-    writeJson(join(tmpDir, file), sortAcademies(list));
-    return { sido, name, file, academies: list.length, priced: priced(list) };
-  });
-
-  const market = buildMarket(academies);
-  const updatedAt = new Date().toISOString();
-  writeJson(join(tmpDir, 'market.json'), { updatedAt, rows: market });
-  const manifest: DataManifest = {
-    version: 1,
-    updatedAt,
-    sampleMode: args.sample || Boolean(args.fromRaw),
-    source: '나이스 교육정보 개방 포털 학원교습소정보(acaInsTiInfo)',
-    totals: {
-      academies: academies.length,
-      priced: priced(academies),
-      courses: academies.reduce((s, a) => s + a.courses.length, 0),
-      unassigned: buckets.reduce((s, b) => s + b.academies, 0),
-      skippedClosed,
-    },
-    offices: officeStats,
-    districts,
-    buckets,
-  };
-  writeJson(join(tmpDir, 'manifest.json'), manifest);
-
+  for (const [file, data] of files) writeJson(join(tmpDir, file), data);
   // 다 만든 뒤에 한 번에 바꿔 끼운다
   if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
   renameSync(tmpDir, outDir);
+}
+
+// ───────────── 실행 ─────────────
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const key = process.env.NEIS_KEY?.trim() ?? '';
+  let snap: RawSnapshot;
+
+  if (args.fromRaw) {
+    snap = loadRaw(args.fromRaw);
+    console.log(`원자료 ${snap.offices.reduce((s, o) => s + o.rows.length, 0).toLocaleString()}건을 읽었습니다 (${snap.kind}).`);
+  } else {
+    snap = await (async () => {
+      if (key && args.source !== 'file') {
+        try {
+          const s = await fetchFromApi(key, args.offices);
+          if (!args.offices) checkComplete(s);
+          return s;
+        } catch (err) {
+          const message = neisErrorMessage(err) === '알 수 없는 오류가 발생했습니다.' && err instanceof Error ? err.message : neisErrorMessage(err);
+          // GitHub Actions 화면에 경고로 보이게 한다
+          console.log(`\n::warning::교육청 Open API 로 받지 못해 전국 파일로 대신 만듭니다: ${message}`);
+          if (args.source === 'api' || args.offices) throw err;
+        }
+      } else if (!key) {
+        console.log('NEIS_KEY 가 없어 교육청이 매달 올리는 전국 파일을 씁니다. (매주 최신 자료는 인증키를 GitHub Secrets 의 NEIS_KEY 로 등록하세요)');
+      }
+      const s = await fetchFromFile();
+      checkComplete(s);
+      return s;
+    })();
+    saveRaw(snap);
+  }
+
+  const { manifest, files } = buildOutput(snap);
+  writeOutput(files);
+  const t = manifest.totals;
   console.log(
-    `\n완료: 학원·교습소 ${manifest.totals.academies.toLocaleString()}곳 (교습비 공개 ${manifest.totals.priced.toLocaleString()}곳), 과정 ${manifest.totals.courses.toLocaleString()}개, 시세 ${market.length.toLocaleString()}행` +
-      `${manifest.totals.unassigned ? `, 구 미상 ${manifest.totals.unassigned.toLocaleString()}곳` : ''}${manifest.sampleMode ? ' [표본]' : ''}`,
+    `\n완료: 학원·교습소 ${t.academies.toLocaleString()}곳 (교습비 공개 ${t.priced.toLocaleString()}곳), 과정 ${t.courses.toLocaleString()}개` +
+      `${t.unassigned ? `, 구 미상 ${t.unassigned.toLocaleString()}곳` : ''} · 출처 ${manifest.source}${manifest.baseDate ? ` (${manifest.baseDate} 기준)` : ''}`,
   );
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+  console.error(`실패: ${err instanceof Error ? err.message : err}\n기존 데이터를 그대로 둡니다.`);
   process.exit(1);
 });

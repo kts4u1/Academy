@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Histogram } from '../charts/Histogram';
 import { AcademyCard } from '../components/AcademyCard';
-import { DataStamp, DistrictGate, LoadingState, SportsNotice } from '../components/DataState';
+import { DataStamp, DistrictGate, ErrorState, LoadingState, SportsNotice } from '../components/DataState';
 import { RegionPicker } from '../components/RegionPicker';
 import { EmptyState, PageHeader, Segmented, Sheet, Toggle } from '../components/ui';
 import { AGE_LABELS, AGE_ORDER, SUBJECT_MAP, SUBJECTS } from '../data/categories';
@@ -12,7 +12,6 @@ import type { DistrictData } from '../data/source';
 import { useDistrictData, useMarket } from '../hooks';
 import { manwon, shortMan } from '../lib/format';
 import { searchAcademies, SORT_OPTIONS, type SearchFilters, type SortKey } from '../lib/realSearch';
-import { representativePrice } from '../lib/realData';
 import { summarize } from '../lib/stats';
 import { useApp } from '../store/AppContext';
 import type { AgeGroup } from '../types';
@@ -40,12 +39,14 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
   const hits = useMemo(() => searchAcademies(data, filters, market.rows, sort), [data, filters, market.rows, sort]);
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [data, filters, sort]);
-  const priced = hits.filter((h) => h.best);
-  const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => { const p = representativePrice(h.courses); return p === null ? [] : [p]; }) : []), [hits, filters.subject]);
+  const priced = hits.filter((h) => h.rep);
+  // 시세와 같은 기준: 학원마다 대표 과정 금액 하나
+  const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => (h.rep ? [h.rep.price] : [])) : []), [hits, filters.subject]);
   const stats = summarize(prices);
   const region = { sido: data.sido, sigungu: data.sigungu };
   // 시세가 늦게 오면 정렬·배지가 바뀌어 보이므로 다 받은 뒤에 보여 준다
   if (market.loading) return <LoadingState message="교습비 시세를 불러오는 중…" />;
+  if (market.error) return <ErrorState message={market.error} onRetry={() => window.location.reload()} />;
 
   return (
     <div>
@@ -227,7 +228,7 @@ export function SearchPage() {
                 {(data) => (
                   <>
                     <div className="mb-3">
-                      <DataStamp data={data} onReload={district.reload} />
+                      <DataStamp data={data} onReload={district.reload} error={district.error} />
                     </div>
                     <Results data={data} filters={memoFilters} sort={sort} onSort={(s) => update({ sort: s === 'price' ? null : s })} />
                   </>

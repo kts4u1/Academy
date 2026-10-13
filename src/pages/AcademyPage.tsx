@@ -4,13 +4,13 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Histogram } from '../charts/Histogram';
 import { RangeStrip } from '../charts/RangeStrip';
 import { academyPath, refOf, useAcademyActions } from '../components/AcademyCard';
-import { DataStamp, DistrictGate } from '../components/DataState';
+import { DataStamp, DistrictGate, ErrorState, LoadingState } from '../components/DataState';
 import { BackButton, EmptyState, KindBadge, PriceLevelBadge, Section, Sheet, SubjectChips, SubjectTile } from '../components/ui';
 import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
 import type { DataMode, DistrictData } from '../data/source';
 import { useDistrictData, useMarket } from '../hooks';
 import { dotDate, manwon, shortMan, signedPercent, unitPrice } from '../lib/format';
-import { academyPrices, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
+import { academyPrices, courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
 import { cheaperAlternatives, marketForCourse, marketScopeName } from '../lib/realSearch';
 import { useApp } from '../store/AppContext';
 
@@ -19,8 +19,8 @@ export function callablePhone(phone: string): boolean {
   return /\d/.test(phone) && !/0000-0000$/.test(phone);
 }
 
-function marketLabel(row: MarketRow, mode: DataMode, data: DistrictData): string {
-  return `${marketScopeName(row, mode, data)} ${row.age ? AGE_LABELS[row.age] + ' ' : ''}${SUBJECT_MAP[row.subjectId]?.name ?? ''}`;
+function marketLabel(row: MarketRow, mode: DataMode): string {
+  return `${marketScopeName(row, mode)} ${row.age ? AGE_LABELS[row.age] + ' ' : ''}${SUBJECT_MAP[row.subjectId]?.name ?? ''}`;
 }
 
 function CourseRow({ course, selected, onSelect, rows, academy }: { course: Course; selected: boolean; onSelect: () => void; rows: MarketRow[]; academy: RealAcademy }) {
@@ -83,8 +83,9 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
               sido: academy.sido,
               sigungu: academy.unassigned ? data.sigungu : academy.sigungu,
               ref: refOf(academy, data),
-              course: course?.name,
+              course: course ? courseKey(course) : undefined,
               reportedPrice: course?.price,
+              ...(course && !isComparableCourse(course) ? { noMarket: true } : {}),
             });
             onClose();
             showToast('내 학원비에 추가했어요');
@@ -145,9 +146,10 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
     () => [...academy.courses].sort((x, y) => Number(!isComparableCourse(x)) - Number(!isComparableCourse(y)) || (x.subjectId ?? 'zz').localeCompare(y.subjectId ?? 'zz') || x.price - y.price),
     [academy],
   );
-  const defaultCourse = sortedCourses.find((c) => c.name === courseParam) ?? sortedCourses.find(isComparableCourse) ?? sortedCourses[0] ?? null;
-  const [selectedName, setSelectedName] = useState<string | null>(defaultCourse?.name ?? null);
-  const selected = sortedCourses.find((c) => c.name === selectedName) ?? defaultCourse;
+  // 같은 이름의 과정이 금액만 다르게 여러 개일 수 있어 이름|금액 키로 고른다
+  const defaultCourse = findCourse(sortedCourses, courseParam) ?? sortedCourses.find(isComparableCourse) ?? sortedCourses[0] ?? null;
+  const [selectedKey, setSelectedKey] = useState<string | null>(defaultCourse ? courseKey(defaultCourse) : null);
+  const selected = findCourse(sortedCourses, selectedKey) ?? defaultCourse;
   const region = { sido: data.sido, sigungu: data.sigungu };
   const actions = useAcademyActions(academy, region);
 
@@ -179,7 +181,7 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
           <Heart aria-hidden="true" className={`h-4 w-4 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
           {actions.fav ? '찜함' : '찜하기'}
         </button>
-        <button type="button" className="btn-ghost" onClick={() => actions.onCompare(selected?.name ?? null)}>
+        <button type="button" className="btn-ghost" onClick={() => actions.onCompare(selected ? courseKey(selected) : null)}>
           {actions.comparing ? <Check aria-hidden="true" className="h-4 w-4 text-accent" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
           {actions.comparing ? '비교함 과정 바꾸기' : '비교함에 담기'}
         </button>
@@ -242,15 +244,19 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
         ) : (
           <ul className="flex flex-col gap-2">
             {sortedCourses.map((c) => (
-              <CourseRow key={`${c.name}|${c.price}`} course={c} selected={selected === c} onSelect={() => setSelectedName(c.name)} rows={market.rows} academy={academy} />
+              <CourseRow key={courseKey(c)} course={c} selected={selected === c} onSelect={() => setSelectedKey(courseKey(c))} rows={market.rows} academy={academy} />
             ))}
           </ul>
         )}
       </Section>
 
       {comparable && (
-        <Section title="시세와 비교" desc={match ? `${marketLabel(match.row, mode, data)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
-          {match && pos ? (
+        <Section title="시세와 비교" desc={match ? `${marketLabel(match.row, mode)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
+          {market.loading ? (
+            <LoadingState message="교습비 시세를 불러오는 중…" />
+          ) : market.error ? (
+            <ErrorState message={market.error} />
+          ) : match && pos ? (
             <div className="card flex flex-col gap-4 p-4">
               <p className="text-[15px]">
                 <b>{comparable.name}</b> {manwon(comparable.price)}은(는) 중앙값 {manwon(match.row.median)}보다{' '}
@@ -260,7 +266,13 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
                 <span className="block text-[13px] text-ink-3">저렴한 쪽부터 {Math.round(pos.percentile)}% 위치</span>
               </p>
               <RangeStrip stats={{ n: match.row.n, min: match.row.min, max: match.row.max, mean: match.row.median, median: match.row.median, p25: match.row.p25, p75: match.row.p75 }} value={comparable.price} format={manwon} />
-              {match.widened && <p className="text-[12px] text-ink-3">{data.sigungu}에 같은 조건으로 교습비를 공개한 곳이 3곳 미만이라 범위를 넓혀 비교했어요.</p>}
+              {match.widened && (
+                <p className="text-[12px] text-ink-3">
+                  {academy.unassigned
+                    ? `주소로 구를 정하지 못한 곳이라 ${marketScopeName(match.row, mode)}와 비교했어요.`
+                    : `${academy.sigungu}에 같은 조건으로 교습비를 공개한 곳이 3곳 미만이라 범위를 넓혀 비교했어요.`}
+                </p>
+              )}
               {localPrices.length >= 5 && (
                 <Histogram values={localPrices} median={match.row.median} marker={{ value: comparable.price, label: '이 과정' }} format={manwon} tickFormat={shortMan} unitLabel="곳" />
               )}

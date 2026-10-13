@@ -1,8 +1,8 @@
 import { ChartColumn, Heart, House, MapPin, Scale, Search, Settings, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useAvailability } from '../hooks';
-import { kstDate } from '../lib/format';
+import { daysSince, useAvailability } from '../hooks';
+import { dotDate, kstDate } from '../lib/format';
 import { useApp } from '../store/AppContext';
 import { RegionPicker } from './RegionPicker';
 import { Sheet } from './ui';
@@ -145,26 +145,40 @@ function BottomNav() {
   );
 }
 
+/** 자동 업데이트가 이만큼 지나도 안 바뀌면 멈췄을 수 있다고 알린다 */
+const STALE_DAYS = 9;
+
 function DataStatusBanner() {
-  const { loading, mode, manifest } = useAvailability();
+  const { loading, mode, manifest, error, retry } = useAvailability();
   if (loading) return null;
   const link = (to: string, label: string) => (
     <Link to={to} className="font-semibold text-accent underline-offset-2 hover:underline">
       {label}
     </Link>
   );
+  const age = manifest ? daysSince(manifest.updatedAt) : 0;
   return (
     <div className="border-b border-line bg-surface-2">
       <p className="mx-auto max-w-app px-4 py-1.5 text-[12px] text-ink-2">
         {mode === 'static' && manifest && (
           <>
-            <b className="font-semibold text-ink">교육청 학원교습소정보</b> · {kstDate(manifest.updatedAt)} 업데이트 (매주 자동)
-            {manifest.sampleMode && <b className="ml-1 font-semibold text-pricey">· 표본(일부 학원만)</b>} · {link('/data', '데이터 안내')}
+            <b className="font-semibold text-ink">교육청 학원교습소정보</b> ·{' '}
+            {manifest.sourceKind === 'file' && manifest.baseDate ? `전국 파일 ${dotDate(manifest.baseDate)} 기준` : `${kstDate(manifest.updatedAt)} 업데이트 (매주 자동)`}
+            {manifest.sampleMode && <b className="ml-1 font-semibold text-pricey">· 표본(일부 학원만)</b>}
+            {age >= STALE_DAYS && <b className="ml-1 font-semibold text-pricey">· {age}일 동안 갱신되지 않았어요</b>} · {link('/data', '데이터 안내')}
           </>
         )}
         {mode === 'live' && (
           <>
             <b className="font-semibold text-ink">내 인증키로 교육청 자료 직접 받기</b> · 지역별로 7일 보관 후 다시 받아요 · {link('/data', '데이터 안내')}
+          </>
+        )}
+        {mode === 'error' && (
+          <>
+            <b className="font-semibold text-pricey">데이터 목록을 불러오지 못했어요</b> · {error}{' '}
+            <button type="button" onClick={retry} className="font-semibold text-accent underline-offset-2 hover:underline">
+              다시 시도
+            </button>
           </>
         )}
         {mode === 'none' && (
@@ -188,10 +202,13 @@ function Toast() {
 }
 
 function ScrollToTop() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+    // '/settings#neis-key' 처럼 해시가 있으면 그 부분으로, 아니면 맨 위로
+    const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    if (target) target.scrollIntoView({ block: 'start' });
+    else window.scrollTo(0, 0);
+  }, [pathname, hash]);
   return null;
 }
 

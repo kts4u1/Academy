@@ -5,13 +5,13 @@ import { SUBJECTS } from '../data/categories';
 import { DISTRICTS, findDistrict, MERGED_SIDO_NAMES, SIDO_ALIASES, type District } from '../data/regions';
 import type { DataMode, DistrictData } from '../data/source';
 import type { AgeGroup } from '../types';
-import { courseMatches, isComparableCourse, marketFor, positionOf, type Course, type MarketRow, type PriceLevel, type RealAcademy } from './realData';
+import { courseMatches, isComparableCourse, marketFor, positionOf, representativeCourse, type Course, type MarketRow, type PriceLevel, type RealAcademy } from './realData';
 
 // ───────────── 시세 찾기 ─────────────
 
 export interface MarketMatch {
   row: MarketRow;
-  /** 시·군·구 시세가 없어 넓힌 범위인지 */
+  /** 학원이 있는 시·군·구가 아닌 더 넓은 범위와 비교했는지 (표본 부족, 또는 구 미상 학원) */
   widened: boolean;
 }
 
@@ -25,14 +25,16 @@ export function marketForCourse(rows: MarketRow[], academy: Pick<RealAcademy, 's
   const sigungu = academy.unassigned ? '' : academy.sigungu;
   const age = ageHint ?? (course.ages.length === 1 ? course.ages[0] : null);
   const row = marketFor(rows, academy.sido, sigungu, course.subjectId, age);
-  return row ? { row, widened: row.sigungu !== sigungu } : null;
+  return row ? { row, widened: Boolean(academy.unassigned) || row.sigungu !== academy.sigungu } : null;
 }
 
-/** 시세 행의 범위 이름 */
-export function marketScopeName(row: MarketRow, mode: DataMode, district?: { sigungu: string }): string {
+/**
+ * 시세 행의 범위 이름. 브라우저에서 지역별로 받은 경우의 넓은 범위는 시·도 전체가 아니라
+ * 그동안 받은 지역(과 그 시의 구 미상 학원)만 합친 것이라 그렇게 부른다.
+ */
+export function marketScopeName(row: MarketRow, mode: DataMode): string {
   if (row.sigungu) return row.sigungu;
-  if (mode === 'live' && district) return `${district.sigungu} 일대`;
-  return `${row.sido} 전체`;
+  return mode === 'live' ? '받은 지역 전체' : `${row.sido} 전체`;
 }
 
 // ───────────── 검색어 해석 ─────────────
@@ -41,14 +43,46 @@ export interface ParsedQuery {
   sido?: string;
   sigungu?: string;
   subject?: string;
-  /** 지역·과목으로 쓰이지 않은 나머지 낱말 (학원 이름·동·과정 이름으로 찾는다) */
+  age?: AgeGroup;
+  /** 지역·과목·대상으로 쓰이지 않은 나머지 낱말 (학원 이름·동·과정 이름으로 찾는다) */
   text: string;
 }
 
 const strip = (s: string) => s.replace(/(특별자치시|특별자치도|특별시|광역시|시|군|구)$/, '');
 
+/** 흔히 쓰는 시·도 줄임말 ('제주시'·'세종시'·'광주시'는 시·군·구 이름이라 넣지 않는다) */
+const SHORT_SIDO: Record<string, string> = { 서울시: '서울', 부산시: '부산', 대구시: '대구', 인천시: '인천', 대전시: '대전', 울산시: '울산' };
+
+/** 행정구역 이름이 아니지만 지역 이름으로 흔히 쓰는 말 */
+const AREA_ALIASES: Record<string, string[]> = {
+  일산: ['경기|고양시 일산동구', '경기|고양시 일산서구'],
+  마산: ['경남|창원시 마산합포구', '경남|창원시 마산회원구'],
+};
+
+const AGE_WORDS: Record<string, AgeGroup> = {
+  유아: 'preschool',
+  유치부: 'preschool',
+  미취학: 'preschool',
+  초등: 'elementary',
+  초등학생: 'elementary',
+  초등부: 'elementary',
+  중등: 'middle',
+  중학생: 'middle',
+  중등부: 'middle',
+  고등: 'high',
+  고등학생: 'high',
+  고교: 'high',
+  고등부: 'high',
+  성인: 'adult',
+  직장인: 'adult',
+};
+
+/** 검색에 뜻이 없는 말: 남겨 두면 이름에 그 글자가 있는 곳만 남는다 */
+const GENERIC_WORDS = new Set(['학원', '교습소', '레슨', '수업', '과외', '반', '강좌', '교실', '전문', '추천', '근처', '가격', '학원비', '교습비', '시세', '잘하는', '저렴한', '싼']);
+
 function sidoOf(token: string): string[] | null {
   if (MERGED_SIDO_NAMES[token]) return MERGED_SIDO_NAMES[token];
+  if (SHORT_SIDO[token]) return [SHORT_SIDO[token]];
   for (const [sido, aliases] of Object.entries(SIDO_ALIASES)) {
     if (token === sido || aliases.includes(token)) return [sido];
   }
@@ -57,6 +91,7 @@ function sidoOf(token: string): string[] | null {
 
 function districtsByName(token: string, sidos: string[] | null): District[] {
   const pool = sidos ? DISTRICTS.filter((d) => sidos.includes(d.sido)) : DISTRICTS;
+  if (AREA_ALIASES[token]) return pool.filter((d) => AREA_ALIASES[token].includes(`${d.sido}|${d.sigungu}`));
   const t = token.replace(/\s/g, '');
   const exact = pool.filter((d) => {
     const parts = d.sigungu.split(' ');
@@ -75,40 +110,58 @@ function subjectOf(token: string): string | undefined {
   return SUBJECTS.find((s) => s.keywords.some((k) => k.toLowerCase() === t))?.id;
 }
 
+/** '피아노학원' → '피아노', '학원' → '' */
+function cleanToken(token: string): string {
+  if (GENERIC_WORDS.has(token)) return '';
+  const stem = token.replace(/(학원|교습소)$/, '');
+  return stem.length >= 2 ? stem : token;
+}
+
 /**
- * '목동 영어', '광산구 수학', '분당 피아노 교습소' 같은 검색어에서 지역과 과목을 골라낸다.
+ * '목동 영어', '성남시 중원구 수학', '서울시 강남구 고등 영어', '분당 피아노학원' 같은 검색어에서
+ * 지역·과목·대상을 골라낸다. 지역 낱말이 여럿이면 차례로 좁히고('성남시' → '중원구'),
  * 같은 이름의 구·동이 여러 곳이면 내 동네가 있는 시·도를 먼저 고른다.
  */
 export function parseQuery(raw: string, home?: { sido: string; sigungu: string } | null): ParsedQuery {
-  const tokens = raw.trim().split(/\s+/).filter(Boolean);
+  const words = raw.trim().split(/\s+/).map(cleanToken).filter(Boolean);
+  // '광주시 광산구': 경기 광주시가 아니라 광주광역시
+  const tokens = words.map((w, i) => (w === '광주시' && ['동구', '서구', '남구', '북구', '광산구'].includes(words[i + 1] ?? '') ? '광주' : w));
   const out: ParsedQuery = { text: '' };
   const rest: string[] = [];
   let sidos: string[] | null = null;
+  let candidates: District[] | null = null;
   for (const token of tokens) {
-    const s = !out.sigungu ? sidoOf(token) : null;
-    if (s && !sidos) {
-      sidos = s;
+    if (!out.age && AGE_WORDS[token]) {
+      out.age = AGE_WORDS[token];
       continue;
     }
-    if (!out.sigungu) {
-      const found = districtsByName(token, sidos);
-      if (found.length) {
-        const pick = found.find((d) => d.sido === home?.sido && d.sigungu === home?.sigungu) ?? found.find((d) => d.sido === home?.sido) ?? found[0];
-        out.sido = pick.sido;
-        out.sigungu = pick.sigungu;
-        continue;
-      }
+    const s = sidoOf(token);
+    if (s) {
+      sidos ??= s;
+      if (candidates) candidates = candidates.filter((d) => s.includes(d.sido));
+      continue;
     }
-    if (!out.subject) {
-      const subject = subjectOf(token);
-      if (subject) {
-        out.subject = subject;
+    const subject = subjectOf(token);
+    if (subject && (!out.subject || out.subject === subject)) {
+      out.subject = subject;
+      continue;
+    }
+    const found = districtsByName(token, sidos);
+    if (found.length) {
+      const narrowed: District[] = candidates ? candidates.filter((c) => found.includes(c)) : found;
+      if (narrowed.length) {
+        candidates = narrowed;
         continue;
       }
     }
     rest.push(token);
   }
-  if (!out.sigungu && sidos) {
+  if (candidates?.length) {
+    const pick =
+      candidates.find((d) => d.sido === home?.sido && d.sigungu === home?.sigungu) ?? candidates.find((d) => d.sido === home?.sido) ?? candidates[0];
+    out.sido = pick.sido;
+    out.sigungu = pick.sigungu;
+  } else if (sidos) {
     const sido = home && sidos.includes(home.sido) ? home.sido : sidos[0];
     out.sido = sido;
     out.sigungu = home && home.sido === sido && findDistrict(home.sido, home.sigungu) ? home.sigungu : DISTRICTS.find((d) => d.sido === sido)?.sigungu;
@@ -144,8 +197,8 @@ export interface SearchHit {
   academy: RealAcademy;
   /** 조건에 맞는 비교 가능한 과정 (싼 순) */
   courses: Course[];
-  /** 대표로 보여 줄 과정 (가장 싼 것) */
-  best: Course | null;
+  /** 대표 과정: 맞는 과정 가운데 금액이 가운데인 것. 시세도 학원마다 이 금액으로 계산한다 */
+  rep: Course | null;
   market: MarketMatch | null;
   percentile: number | null;
   level: PriceLevel | null;
@@ -176,37 +229,40 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
       if (courses.length === 0 && !unknownPrice) continue;
     }
     if (filters.pricedOnly && courses.length === 0) continue;
-    const best = courses[0] ?? null;
-    const market = best ? marketForCourse(rows, a, best, age) : null;
-    const pos = best && market ? positionOf(best.price, market.row) : null;
-    hits.push({ academy: a, courses, best, market, percentile: pos?.percentile ?? null, level: pos?.level ?? null, diffFromMedian: pos?.diffFromMedian ?? null });
+    const rep = representativeCourse(courses);
+    const market = rep ? marketForCourse(rows, a, rep, age) : null;
+    const pos = rep && market ? positionOf(rep.price, market.row) : null;
+    hits.push({ academy: a, courses, rep, market, percentile: pos?.percentile ?? null, level: pos?.level ?? null, diffFromMedian: pos?.diffFromMedian ?? null });
   }
   const byName = (x: SearchHit, y: SearchHit) => x.academy.name.localeCompare(y.academy.name, 'ko');
   // 교습비를 모르는 곳은 가격 정렬에서 늘 뒤로
   const priced = (fn: (x: SearchHit, y: SearchHit) => number) => (x: SearchHit, y: SearchHit) => {
-    if (!x.best !== !y.best) return x.best ? -1 : 1;
+    if (!x.rep !== !y.rep) return x.rep ? -1 : 1;
     return fn(x, y) || byName(x, y);
   };
   const cmp: Record<SortKey, (x: SearchHit, y: SearchHit) => number> = {
-    price: priced((x, y) => (x.best && y.best ? x.best.price - y.best.price : 0)),
-    price_desc: priced((x, y) => (x.best && y.best ? y.best.price - x.best.price : 0)),
+    price: priced((x, y) => (x.rep && y.rep ? x.rep.price - y.rep.price : 0)),
+    price_desc: priced((x, y) => (x.rep && y.rep ? y.rep.price - x.rep.price : 0)),
     value: priced((x, y) => {
       if ((x.percentile === null) !== (y.percentile === null)) return x.percentile === null ? 1 : -1;
-      return (x.percentile ?? 0) - (y.percentile ?? 0) || (x.best && y.best ? x.best.price - y.best.price : 0);
+      return (x.percentile ?? 0) - (y.percentile ?? 0) || (x.rep && y.rep ? x.rep.price - y.rep.price : 0);
     }),
     name: byName,
   };
   return hits.sort(cmp[sort]);
 }
 
-/** 같은 지역에서 같은 과목·연령을 더 싸게 가르치는 곳 */
+/**
+ * 같은 지역에서 같은 과목·대상을 더 싸게 가르치는 곳.
+ * 대상이 정해진 과정이면 대상이 겹치는 과정만 본다 (고등반을 유아반 금액과 견주지 않게).
+ */
 export function cheaperAlternatives(data: DistrictData, academy: RealAcademy, course: Course, limit = 5): { academy: RealAcademy; course: Course }[] {
   if (!course.subjectId) return [];
-  const age = course.ages.length === 1 ? course.ages[0] : null;
+  const sameAge = (x: Course) => course.ages.length === 0 || x.ages.some((a) => course.ages.includes(a));
   const out: { academy: RealAcademy; course: Course }[] = [];
   for (const a of [...data.academies, ...data.unknownDistrict]) {
     if (a.id === academy.id) continue;
-    const c = a.courses.filter((x) => courseMatches(x, course.subjectId, age) && x.price < course.price).sort((x, y) => x.price - y.price)[0];
+    const c = a.courses.filter((x) => courseMatches(x, course.subjectId) && sameAge(x) && x.price < course.price).sort((x, y) => x.price - y.price)[0];
     if (c) out.push({ academy: a, course: c });
   }
   return out.sort((x, y) => x.course.price - y.course.price).slice(0, limit);

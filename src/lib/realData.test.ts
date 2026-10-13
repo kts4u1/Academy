@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { academy } from '../test/fixtures';
-import { academyPrices, approxPercentile, buildMarket, findMarket, isComparableCourse, marketFor, MIN_MARKET_N, positionOf, pricePerSession, priceLevel } from './realData';
+import { academyPrices, approxPercentile, buildMarket, courseKey, findCourse, representativeCourse, findMarket, isComparableCourse, marketFor, MIN_MARKET_N, positionOf, pricePerSession, priceLevel } from './realData';
 
 describe('toRealAcademy', () => {
   it('교습비를 과정별로 나누고 과목·대상을 붙인다', () => {
@@ -89,7 +89,22 @@ describe('buildMarket', () => {
 
   it('학원별 대표 금액 (히스토그램용)', () => {
     expect(academyPrices(list, 'math', 'middle').sort()).toEqual([200000, 300000, 400000, 600000]);
-    expect(academyPrices(list, 'math', null).sort()).toEqual([200000, 300000, 450000, 600000]);
+    expect(academyPrices(list, 'math', null).sort()).toEqual([200000, 300000, 400000, 600000]); // 다수학: 40만·50만 중 낮은 쪽
+  });
+});
+
+describe('대표 과정 · 과정 키', () => {
+  it('금액이 가운데인 과정 (짝수면 낮은 쪽)', () => {
+    expect(representativeCourse([{ price: 3 }, { price: 1 }, { price: 2 }])?.price).toBe(2);
+    expect(representativeCourse([{ price: 4 }, { price: 1 }, { price: 3 }, { price: 2 }])?.price).toBe(2);
+    expect(representativeCourse([])).toBeNull();
+  });
+
+  it('같은 이름의 과정이 여럿이어도 이름|금액으로 구별한다', () => {
+    const a = academy({ PSNBY_THCC_CNTNT: '수학:400000, 수학:540000, 수학:800000' });
+    expect(a.courses).toHaveLength(3);
+    expect(findCourse(a.courses, courseKey(a.courses[2]))?.price).toBe(800000);
+    expect(findCourse(a.courses, '수학')?.price).toBe(400000); // 예전 링크(이름만)
   });
 });
 
@@ -110,6 +125,16 @@ describe('시세 위치', () => {
     const pos = positionOf(240000, row);
     expect(pos.level).toBe('low');
     expect(pos.diffFromMedian).toBeCloseTo(-0.2);
+  });
+
+  it('같은 금액인 분위수가 여럿이면 그 범위의 가운데 (모두 같으면 평균)', () => {
+    const flat = { ...row, min: 500000, p10: 500000, p25: 500000, median: 500000, p75: 500000, p90: 500000, max: 500000 };
+    expect(approxPercentile(flat, 500000)).toBe(50);
+    expect(priceLevel(approxPercentile(flat, 500000))).toBe('avg');
+    const topTie = { ...row, min: 100000, p10: 120000, p25: 150000, median: 200000, p75: 200000, p90: 200000, max: 200000 };
+    expect(approxPercentile(topTie, 200000)).toBe(75);
+    const midTie = { ...row, p25: 300000, median: 300000, p75: 300000 };
+    expect(approxPercentile(midTie, 300000)).toBe(50);
   });
 
   it('원자료가 있으면 실제 순위를 쓴다', () => {

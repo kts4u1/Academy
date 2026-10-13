@@ -2,7 +2,7 @@ import { Check, Heart, MapPin, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AGE_LABELS } from '../data/categories';
 import { manwon } from '../lib/format';
-import type { RealAcademy } from '../lib/realData';
+import { courseKey, type RealAcademy } from '../lib/realData';
 import { marketScopeName, type SearchHit } from '../lib/realSearch';
 import type { DataMode } from '../data/source';
 import { useApp } from '../store/AppContext';
@@ -18,6 +18,11 @@ export function refOf(academy: RealAcademy, region: { sido: string; sigungu: str
   return { id: academy.id, sido: region.sido, sigungu: region.sigungu, name: academy.name };
 }
 
+/** 화면에 보여 줄 위치: 구를 정하지 못한 곳은 검색한 구가 아니라 '성남시(구 미상)'로 */
+export function placeOf(academy: RealAcademy): string {
+  return `${academy.unassigned ? `${academy.sigungu}(구 미상)` : academy.sigungu} ${academy.dong}`.trim();
+}
+
 /** 찜·비교 버튼 (카드·상세 공용) */
 export function useAcademyActions(academy: RealAcademy, region: { sido: string; sigungu: string }) {
   const { toggleFavorite, isFavorite, addCompare, inCompare, removeCompare, showToast } = useApp();
@@ -26,9 +31,10 @@ export function useAcademyActions(academy: RealAcademy, region: { sido: string; 
     fav: isFavorite(academy.id),
     comparing: inCompare(academy.id),
     onFavorite: () => {
-      const added = toggleFavorite({ ...ref, dong: academy.dong, kind: academy.kind, subjects: academy.subjects });
+      const added = toggleFavorite({ ...ref, dong: academy.dong, place: placeOf(academy), kind: academy.kind, subjects: academy.subjects });
       showToast(added ? '찜했어요' : '찜을 해제했어요');
     },
+    /** course: 과정 키 (courseKey) */
     onCompare: (course: string | null) => {
       const r = addCompare({ ref, course });
       showToast(r === 'full' ? '비교함은 최대 4곳까지 담을 수 있어요' : r === 'updated' ? '비교할 과정을 바꿨어요' : '비교함에 담았어요');
@@ -41,9 +47,9 @@ export function useAcademyActions(academy: RealAcademy, region: { sido: string; 
 }
 
 export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { sido: string; sigungu: string }; mode: DataMode }) {
-  const { academy, best, courses, level, diffFromMedian, market } = hit;
+  const { academy, rep, courses, level, diffFromMedian, market } = hit;
   const actions = useAcademyActions(academy, region);
-  const tileSubject = best?.subjectId ?? academy.subjects[0];
+  const tileSubject = rep?.subjectId ?? academy.subjects[0];
 
   return (
     <article className="card relative flex flex-col gap-3 p-4 transition-shadow hover:shadow-md">
@@ -57,7 +63,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
         )}
         <div className="min-w-0 flex-1">
           <h3 className="pr-16 text-[16px] font-bold leading-snug">
-            <Link to={academyPath(refOf(academy, region), best?.name)} className="after:absolute after:inset-0 after:rounded-card hover:text-accent">
+            <Link to={academyPath(refOf(academy, region), rep ? courseKey(rep) : null)} className="after:absolute after:inset-0 after:rounded-card hover:text-accent">
               {academy.name}
             </Link>
           </h3>
@@ -65,31 +71,36 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
             <KindBadge kind={academy.kind} />
             <span className="inline-flex items-center gap-0.5">
               <MapPin aria-hidden="true" className="h-3 w-3" />
-              {academy.unassigned ? `${academy.sigungu}(구 미상)` : academy.sigungu} {academy.dong}
+              {placeOf(academy)}
             </span>
             {academy.subjects.length > 0 && <SubjectChips subjectIds={academy.subjects.slice(0, 4)} />}
           </div>
         </div>
       </div>
 
-      {best ? (
+      {rep ? (
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[12px] text-ink-3" title={best.name}>
-              {best.name}
-              {best.ages.length > 0 && ` · ${best.ages.map((a) => AGE_LABELS[a]).join('·')}`}
+            <p className="truncate text-[12px] text-ink-3" title={rep.name}>
+              {courses.length > 1 ? '대표 과정 · ' : ''}
+              {rep.name}
+              {rep.ages.length > 0 && ` · ${rep.ages.map((a) => AGE_LABELS[a]).join('·')}`}
             </p>
             <p className="num text-[20px] font-bold leading-tight tracking-tight">
-              {manwon(best.price)}
+              {manwon(rep.price)}
               <span className="ml-1 text-[12px] font-medium text-ink-3">/ 월 신고 교습비</span>
             </p>
-            {courses.length > 1 && <p className="text-[12px] text-ink-3">맞는 과정 {courses.length}개 · 최고 {manwon(courses[courses.length - 1].price)}</p>}
+            {courses.length > 1 && (
+              <p className="num text-[12px] text-ink-3">
+                맞는 과정 {courses.length}개 · {manwon(courses[0].price)} ~ {manwon(courses[courses.length - 1].price)}
+              </p>
+            )}
           </div>
           {level && diffFromMedian !== null && market && (
             <div className="flex flex-col items-end gap-0.5">
               <PriceLevelBadge level={level} diff={diffFromMedian} />
               <span className="text-[11px] text-ink-3">
-                {marketScopeName(market.row, mode, region)}{market.row.age ? ` ${AGE_LABELS[market.row.age]}` : ''} 중앙값 {manwon(market.row.median)}
+                {marketScopeName(market.row, mode)}{market.row.age ? ` ${AGE_LABELS[market.row.age]}` : ''} 중앙값 {manwon(market.row.median)}
               </span>
             </div>
           )}
@@ -112,7 +123,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
         </button>
         <button
           type="button"
-          onClick={() => (actions.comparing ? actions.removeCompare() : actions.onCompare(best?.name ?? null))}
+          onClick={() => (actions.comparing ? actions.removeCompare() : actions.onCompare(rep ? courseKey(rep) : null))}
           aria-pressed={actions.comparing}
           aria-label={actions.comparing ? `${academy.name} 비교함에서 빼기` : `${academy.name} 비교함에 담기`}
           className={`rounded-lg p-1.5 hover:bg-surface-2 ${actions.comparing ? 'text-accent' : 'text-ink-3'}`}

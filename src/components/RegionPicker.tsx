@@ -26,6 +26,12 @@ export function RegionPicker({ sido, sigungu, onChange, allowAll = true, idPrefi
           }}
         >
           {allowAll && <option value="">전국</option>}
+          {/* 아직 고르지 않았을 때 첫 항목(서울)이 골라진 것처럼 보이면 서울을 고를 수 없게 된다 */}
+          {!allowAll && !sido && (
+            <option value="" disabled>
+              시·도 선택
+            </option>
+          )}
           {SIDOS.filter((s) => s !== '전남').map((s) =>
             s === '광주' ? (
               // 2026-07-01 통합: 시·도는 하나지만 사람들은 여전히 '광주'와 '전남'으로 찾는다
@@ -53,6 +59,11 @@ export function RegionPicker({ sido, sigungu, onChange, allowAll = true, idPrefi
           onChange={(e) => onChange(sido, e.target.value)}
         >
           {allowAll && <option value="">전체</option>}
+          {!allowAll && !sigungu && (
+            <option value="" disabled>
+              시·군·구 선택
+            </option>
+          )}
           {districts.map((d) => (
             <option key={d.sigungu} value={d.sigungu}>
               {d.sigungu}

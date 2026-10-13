@@ -150,6 +150,8 @@ export interface NeisQuery {
 export interface NeisResult {
   total: number;
   rows: NeisAcademy[];
+  /** 교육청 원자료 그대로 (매주 업데이트에서 보관했다가 다시 가공할 때 쓴다) */
+  raw: NeisRawRow[];
   sampleMode: boolean;
 }
 
@@ -182,22 +184,25 @@ export function parseNeisResponse(json: unknown, sampleMode: boolean): NeisResul
     acaInsTiInfo?: [{ head: [{ list_total_count: number }, { RESULT: { CODE: string; MESSAGE: string } }] }, { row: NeisRawRow[] }];
   };
   if (data.RESULT) {
-    if (data.RESULT.CODE === 'INFO-200') return { total: 0, rows: [], sampleMode };
+    if (data.RESULT.CODE === 'INFO-200') return { total: 0, rows: [], raw: [], sampleMode };
     throw new NeisError(data.RESULT.CODE, data.RESULT.MESSAGE);
   }
   if (!data.acaInsTiInfo) throw new NeisError('PARSE', '응답 형식을 알 수 없습니다.');
   const [headPart, rowPart] = data.acaInsTiInfo;
   const total = headPart.head[0]?.list_total_count ?? 0;
-  const rows = (rowPart?.row ?? []).map(toNeisAcademy);
-  return { total, rows, sampleMode };
+  const raw = rowPart?.row ?? [];
+  return { total, rows: raw.map(toNeisAcademy), raw, sampleMode };
 }
 
 const RETRY_DELAYS_MS = [800, 2000];
 
+/** 교육청 서버 쪽 일시 오류 (HTTP 200 으로 오기도 한다) */
+const TRANSIENT_CODES = new Set(['ERROR-500', 'ERROR-600', 'ERROR-601']);
+
 export async function fetchNeisAcademies(q: NeisQuery, fetchImpl: typeof fetch = fetch, retryDelays: number[] = RETRY_DELAYS_MS): Promise<NeisResult> {
   const sampleMode = !q.key?.trim();
   const url = buildNeisUrl(sampleMode ? { ...q, pageSize: 5 } : q);
-  // 교육청 서버가 잠깐 503 을 주는 경우가 있어 연결 오류·5xx 는 두 번까지 다시 시도한다
+  // 교육청 서버가 잠깐 503·ERROR-500 을 주는 경우가 있어 연결 오류·서버 오류는 두 번까지 다시 시도한다
   for (let attempt = 0; ; attempt++) {
     let res: Response | null = null;
     try {
@@ -205,12 +210,21 @@ export async function fetchNeisAcademies(q: NeisQuery, fetchImpl: typeof fetch =
     } catch {
       res = null;
     }
-    if (res && res.ok) return parseNeisResponse(await res.json(), sampleMode);
-    const retryable = !res || res.status >= 500;
-    if (!retryable || attempt >= retryDelays.length) {
-      if (!res) throw new NeisError('NETWORK', '교육청 서버에 연결하지 못했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도하세요.');
-      throw new NeisError(`HTTP-${res.status}`, `교육청 서버 응답 오류 (${res.status}). 잠시 후 다시 시도하세요.`);
+    let error: NeisError;
+    if (res && res.ok) {
+      try {
+        return parseNeisResponse(await res.json(), sampleMode);
+      } catch (err) {
+        if (!(err instanceof NeisError) || !TRANSIENT_CODES.has(err.code)) throw err;
+        error = err;
+      }
+    } else if (!res) {
+      error = new NeisError('NETWORK', '교육청 서버에 연결하지 못했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도하세요.');
+    } else {
+      error = new NeisError(`HTTP-${res.status}`, `교육청 서버 응답 오류 (${res.status}). 잠시 후 다시 시도하세요.`);
+      if (res.status < 500) throw error;
     }
+    if (attempt >= retryDelays.length) throw error;
     await new Promise((r) => setTimeout(r, retryDelays[attempt]));
   }
 }
@@ -229,6 +243,7 @@ export async function fetchAllNeisAcademies(
   const { maxRows = 6000, onProgress, fetchImpl = fetch, retryDelays, pageDelayMs = 0 } = options;
   const first = await fetchNeisAcademies({ ...q, page: 1, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
   const rows = [...first.rows];
+  const raw = [...first.raw];
   onProgress?.(rows.length, first.total);
   if (first.sampleMode) return { ...first, truncated: first.total > rows.length };
   const limit = Math.min(first.total, maxRows);
@@ -237,9 +252,10 @@ export async function fetchAllNeisAcademies(
     const next = await fetchNeisAcademies({ ...q, page, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
     if (next.rows.length === 0) break;
     rows.push(...next.rows);
+    raw.push(...next.raw);
     onProgress?.(rows.length, first.total);
   }
-  return { total: first.total, rows, sampleMode: false, truncated: first.total > rows.length };
+  return { total: first.total, rows, raw, sampleMode: false, truncated: first.total > rows.length };
 }
 
 export function neisErrorMessage(err: unknown): string {
@@ -249,5 +265,6 @@ export function neisErrorMessage(err: unknown): string {
     if (err.code === 'ERROR-336') return '한 번에 요청할 수 있는 건수(1,000건)를 넘었습니다.';
     return err.message;
   }
+  if (err instanceof Error && /[가-힣]/.test(err.message)) return err.message;
   return '알 수 없는 오류가 발생했습니다.';
 }

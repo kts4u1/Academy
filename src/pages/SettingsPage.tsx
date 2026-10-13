@@ -44,8 +44,8 @@ export function SettingsPage() {
           <RegionPicker
             idPrefix="set-home"
             allowAll={false}
-            sido={settings.home?.sido ?? '서울'}
-            sigungu={settings.home?.sigungu ?? '강남구'}
+            sido={settings.home?.sido ?? ''}
+            sigungu={settings.home?.sigungu ?? ''}
             onChange={(sido, sigungu) => updateSettings({ home: { sido, sigungu } })}
           />
           {!settings.home && <p className="mt-2 text-[12px] text-ink-3">아직 정하지 않았어요. 고르면 바로 저장돼요.</p>}
@@ -140,6 +140,7 @@ export function SettingsPage() {
                   onClick={async () => {
                     resetAll();
                     setKeyDraft('');
+                    setCheck({ state: 'idle' });
                     await clearLiveCache();
                     setConfirmReset(false);
                     showToast('이 기기에 저장된 내 데이터를 지웠어요');

@@ -32,7 +32,7 @@ export function FavoritesPage() {
                   <KindBadge kind={f.kind} />
                   <span className="inline-flex items-center gap-0.5">
                     <MapPin aria-hidden="true" className="h-3 w-3" />
-                    {f.sigungu} {f.dong}
+                    {f.place ?? `${f.sigungu} ${f.dong}`}
                   </span>
                   {f.subjects.length > 0 && <SubjectChips subjectIds={f.subjects.slice(0, 4)} />}
                 </div>

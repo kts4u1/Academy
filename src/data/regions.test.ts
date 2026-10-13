@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketsFor, DISTRICTS, districtsOf, EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames, resolveNeisDistrict, SIDOS } from './regions';
+import { bucketsFor, districtFromAddress, DISTRICTS, districtsOf, EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames, resolveNeisDistrict, SIDOS } from './regions';
 
 describe('전국 지역 목록', () => {
   it('17개 시·도와 256개 시·군·구(일반구 포함)', () => {
@@ -60,6 +60,12 @@ describe('교육청 자료 → 앱 시·군·구 배정', () => {
     expect(resolveNeisDistrict('경기', row('성남시', '경기도 성남시 어딘가로 1'))).toEqual({ bucket: '성남시' });
   });
 
+  it('화성시 동탄구는 도로명·법정동 단서로 찾는다', () => {
+    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 동탄대로 1, 3층'))).toEqual({ sigungu: '화성시 동탄구' });
+    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 노작로 1, 2층 (반송동)'))).toEqual({ sigungu: '화성시 동탄구' });
+    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 봉담읍 어딘가로 1'))).toEqual({ bucket: '화성시' });
+  });
+
   it('청주는 교육청 자료가 구 단위', () => {
     expect(resolveNeisDistrict('충북', row('흥덕구', '충청북도 청주시 흥덕구 대농로 1 (복대동)'))).toEqual({ sigungu: '청주시 흥덕구' });
   });
@@ -70,6 +76,24 @@ describe('교육청 자료 → 앱 시·군·구 배정', () => {
     expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 완정로 1 (마전동)'))).toEqual({ sigungu: '검단구' });
     expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 서곶로 1 (심곡동)'))).toEqual({ sigungu: '서해구' });
     expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 서곶로 1'))).toEqual({ bucket: '인천 옛 서구' });
+  });
+
+  it('행정구역명이 비었거나 옛 이름이면 도로명 주소로 찾는다', () => {
+    expect(resolveNeisDistrict('서울', row('', '서울특별시 서대문구 통일로 197'))).toEqual({ sigungu: '서대문구' });
+    expect(resolveNeisDistrict('경남', row('창원시(폐지)', '경상남도 창원시 마산회원구 3·15대로 1'))).toEqual({ sigungu: '창원시 마산회원구' });
+    expect(districtFromAddress('전남광주통합특별시 광산구 수완로 1')?.sido).toBe('광주');
+    expect(districtFromAddress('어딘가 이상한 주소')).toBeUndefined();
+  });
+
+  it('없어진 연기군은 세종시로, 행정구역명 없는 화성시 주소는 동으로 구를 찾거나 화성시 구 미상으로', () => {
+    expect(resolveNeisDistrict('충남', row('연기군', '충청남도 연기군 조치원읍 충현로 77'))).toEqual({ sigungu: '세종시', sido: '세종' });
+    expect(resolveNeisDistrict('경기', row('', '경기도 화성시 큰나래2길 61 305호(새솔동)'))).toEqual({ sigungu: '화성시 만세구' });
+    expect(resolveNeisDistrict('경기', row('', '경기도 화성시 어딘가로 1'))).toEqual({ bucket: '화성시' });
+    expect(districtFromAddress('세종특별자치시 한누리대로 1')?.sigungu).toBe('세종시');
+  });
+
+  it('다른 시·도로 옮겨 간 군위군은 대구로', () => {
+    expect(resolveNeisDistrict('경북', row('군위군', '경상북도 군위군 군위읍 중앙길 1'))).toEqual({ sigungu: '군위군', sido: '대구' });
   });
 
   it('구 미상 버킷은 같은 시의 각 구에서 함께 보인다', () => {

@@ -6,12 +6,14 @@ import { load, remove, save } from './storage';
 /** 찜한 학원: 목록에서 바로 보여 줄 수 있게 이름·동·종류를 함께 저장한다 */
 export interface FavoriteItem extends AcademyRef {
   dong: string;
+  /** 화면에 보여 줄 위치 (구 미상 학원은 '성남시(구 미상) 정자동') */
+  place?: string;
   kind: string;
   subjects: string[];
   addedAt: string;
 }
 
-/** 비교함: 학원 + 비교할 과정 이름 (교습비가 없으면 null) */
+/** 비교함: 학원 + 비교할 과정 키 (courseKey: 이름|금액, 교습비가 없으면 null) */
 export interface CompareItem {
   ref: AcademyRef;
   course: string | null;
@@ -31,9 +33,12 @@ export interface CalcItem {
   sido: string;
   sigungu: string;
   ref?: AcademyRef;
+  /** 과정 키 (courseKey) */
   course?: string;
   /** 교육청 신고 교습비 (고를 때 기준) */
   reportedPrice?: number;
+  /** 특강·1:1 처럼 월 시세와 비교하지 않는 과정 */
+  noMarket?: boolean;
 }
 
 export type ThemePref = 'system' | 'light' | 'dark';

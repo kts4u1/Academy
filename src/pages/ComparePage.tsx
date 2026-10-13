@@ -3,13 +3,13 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { HBarList } from '../charts/HBarList';
 import { academyPath } from '../components/AcademyCard';
-import { LoadingState } from '../components/DataState';
+import { ErrorState, LoadingState, NoDataState } from '../components/DataState';
 import { EmptyState, PageHeader, PriceLevelBadge, Section, SubjectChips } from '../components/ui';
 import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
 import type { DataMode } from '../data/source';
 import { useDistricts, useMarket } from '../hooks';
 import { dotDate, manwon, unitPrice } from '../lib/format';
-import { isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
+import { courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
 import { marketForCourse, marketScopeName, type MarketMatch } from '../lib/realSearch';
 import { MAX_COMPARE, useApp, type CompareItem } from '../store/AppContext';
 
@@ -27,7 +27,7 @@ function Cell({ children, best }: { children: ReactNode; best?: boolean }) {
 
 export function ComparePage() {
   const { compare, removeCompare, clearCompare, setCompareCourse } = useApp();
-  const { states, loading } = useDistricts(compare.map((c) => c.ref));
+  const { states, loading, reload } = useDistricts(compare.map((c) => c.ref));
   const datas = Array.from(states.values()).map((s) => s.data);
   const market = useMarket(datas);
   const mode: DataMode = market.mode ?? 'static';
@@ -49,11 +49,13 @@ export function ComparePage() {
     );
   }
 
-  if (loading) {
+  const failed = Array.from(states.values()).find((st) => st.status === 'error');
+  const noData = Array.from(states.values()).some((st) => st.status === 'nodata');
+  if (loading || market.loading || failed || noData) {
     return (
       <div>
         <PageHeader title="비교함" />
-        <LoadingState />
+        {failed ? <ErrorState message={failed.error ?? '데이터를 불러오지 못했어요.'} onRetry={reload} /> : noData ? <NoDataState /> : <LoadingState />}
       </div>
     );
   }
@@ -61,7 +63,7 @@ export function ComparePage() {
   const columns: Column[] = compare.map((item) => {
     const data = states.get(`${item.ref.sido}|${item.ref.sigungu}`)?.data;
     const academy = data ? ([...data.academies, ...data.unknownDistrict].find((a) => a.id === item.ref.id) ?? null) : null;
-    const course = academy?.courses.find((c) => c.name === item.course) ?? null;
+    const course = (academy && findCourse(academy.courses, item.course)) ?? null;
     const match = academy && course && isComparableCourse(course) ? marketForCourse(market.rows, academy, course) : null;
     return { item, academy, course, match, position: course && match ? positionOf(course.price, match.row) : null };
   });
@@ -111,12 +113,12 @@ export function ComparePage() {
                     <select
                       className="field mt-2 py-1.5 text-[12px] font-normal"
                       aria-label={`${c.item.ref.name} 비교할 과정`}
-                      value={c.course?.name ?? ''}
+                      value={c.course ? courseKey(c.course) : ''}
                       onChange={(e) => setCompareCourse(c.item.ref.id, e.target.value || null)}
                     >
                       {!c.course && <option value="">과정 선택</option>}
                       {c.academy.courses.map((course) => (
-                        <option key={`${course.name}|${course.price}`} value={course.name}>
+                        <option key={courseKey(course)} value={courseKey(course)}>
                           {course.name} · {manwon(course.price)}
                         </option>
                       ))}
@@ -165,7 +167,7 @@ export function ComparePage() {
                     <span className="flex flex-col items-start gap-1">
                       <PriceLevelBadge level={c.position.level} diff={c.position.diffFromMedian} />
                       <span className="text-[11px] text-ink-3">
-                        {marketScopeName(c.match.row, mode, c.item.ref)} {c.match.row.age ? AGE_LABELS[c.match.row.age] : ''} 중앙값 {manwon(c.match.row.median)} · 하위 {Math.round(c.position.percentile)}%
+                        {marketScopeName(c.match.row, mode)} {c.match.row.age ? AGE_LABELS[c.match.row.age] : ''} 중앙값 {manwon(c.match.row.median)} · 하위 {Math.round(c.position.percentile)}%
                       </span>
                     </span>
                   ) : (

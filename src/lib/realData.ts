@@ -91,7 +91,7 @@ export function toRealAcademy(row: NeisAcademy, sido: string): RealAcademy {
     id: row.id,
     name: row.name,
     kind: row.kind,
-    sido,
+    sido: 'sido' in res && res.sido ? res.sido : sido,
     sigungu: 'sigungu' in res ? res.sigungu : res.bucket,
     ...('bucket' in res ? { unassigned: true } : {}),
     dong: dongOf(row.address),
@@ -105,6 +105,17 @@ export function toRealAcademy(row: NeisAcademy, sido: string): RealAcademy {
     courses,
     subjects,
   };
+}
+
+/** 학원 안에서 과정을 구별하는 키. 같은 이름의 과정이 금액만 다르게 여러 개 있을 수 있다 (이름·금액 쌍은 하나뿐) */
+export function courseKey(c: Pick<Course, 'name' | 'price'>): string {
+  return `${c.name}|${c.price}`;
+}
+
+/** 키(또는 예전 링크의 과정 이름)로 과정 찾기 */
+export function findCourse(courses: Course[], key: string | null | undefined): Course | undefined {
+  if (!key) return undefined;
+  return courses.find((c) => courseKey(c) === key) ?? courses.find((c) => c.name === key);
 }
 
 /** 시세 비교에 쓸 수 있는 과정: 과목을 알고, 월 교습비로 보이며, 1:1 이 아닌 것 */
@@ -150,18 +161,25 @@ export interface MarketRow {
 export const MIN_MARKET_N = 3;
 const AGES: AgeGroup[] = ['preschool', 'elementary', 'middle', 'high', 'adult'];
 
-function median(values: number[]): number {
-  return quantile([...values].sort((a, b) => a - b), 0.5);
+/**
+ * 학원 한 곳의 대표 과정: 조건에 맞는 과정 가운데 금액이 가운데인 것 (짝수면 낮은 쪽).
+ * 과정을 수십 개 신고한 학원 한 곳이 시세를 좌우하지 않도록 시세는 학원마다 이 금액 하나만 센다.
+ * 검색 카드의 대표 금액·시세 배지도 같은 과정을 써서 기준이 어긋나지 않게 한다.
+ */
+export function representativeCourse<T extends Pick<Course, 'price'>>(courses: T[]): T | null {
+  if (courses.length === 0) return null;
+  const sorted = [...courses].sort((a, b) => a.price - b.price);
+  return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
-/**
- * 학원 한 곳의 대표 금액: 조건에 맞는 과정 금액의 중앙값.
- * 과정을 수십 개 신고한 학원 한 곳이 시세를 좌우하지 않도록 학원마다 한 표씩만 센다.
- */
 function perAcademy(items: { price: number; academyId: string }[]): number[] {
-  const byAcademy = new Map<string, number[]>();
-  for (const i of items) byAcademy.set(i.academyId, [...(byAcademy.get(i.academyId) ?? []), i.price]);
-  return Array.from(byAcademy.values(), median);
+  const byAcademy = new Map<string, { price: number }[]>();
+  for (const i of items) {
+    const list = byAcademy.get(i.academyId);
+    if (list) list.push(i);
+    else byAcademy.set(i.academyId, [i]);
+  }
+  return Array.from(byAcademy.values(), (list) => representativeCourse(list)!.price);
 }
 
 function statsRow(sido: string, sigungu: string, subjectId: string, age: AgeGroup | null, items: { price: number; academyId: string }[]): MarketRow | null {
@@ -224,7 +242,8 @@ export function marketFor(rows: MarketRow[], sido: string, sigungu: string, subj
 
 /**
  * 분위수만 있을 때 어떤 금액이 몇 % 위치인지 (0=가장 저렴). 원자료가 있으면 percentileRank 를 쓴다.
- * 최저·10·25·50·75·90%·최고 사이를 직선으로 잇는다.
+ * 최저·10·25·50·75·90%·최고 사이를 직선으로 잇는다. 금액이 같은 분위수가 여럿이면(학원들이 같은 금액을 받는 경우)
+ * 그 분위수들이 덮는 범위의 가운데로 본다 — 모두 같은 금액이면 50%.
  */
 export function approxPercentile(row: MarketRow, price: number): number {
   const pts: [number, number][] = [
@@ -236,12 +255,14 @@ export function approxPercentile(row: MarketRow, price: number): number {
     [row.p90, 90],
     [row.max, 100],
   ];
-  if (price <= pts[0][0]) return 0;
-  if (price >= pts[pts.length - 1][0]) return 100;
+  if (price < pts[0][0]) return 0;
+  if (price > pts[pts.length - 1][0]) return 100;
+  const equal = pts.filter(([x]) => x === price);
+  if (equal.length) return (equal[0][1] + equal[equal.length - 1][1]) / 2;
   for (let i = 1; i < pts.length; i++) {
     const [x1, y1] = pts[i];
     const [x0, y0] = pts[i - 1];
-    if (price <= x1) return x1 === x0 ? y1 : y0 + ((price - x0) / (x1 - x0)) * (y1 - y0);
+    if (price < x1) return y0 + ((price - x0) / (x1 - x0)) * (y1 - y0);
   }
   return 100;
 }
@@ -271,15 +292,10 @@ export function positionOf(price: number, row: MarketRow, rawPrices?: number[]):
   return { percentile, level: priceLevel(percentile), diffFromMedian: row.median > 0 ? price / row.median - 1 : 0 };
 }
 
-/** 학원마다 조건에 맞는 과정 금액의 중앙값 (시세 분포·히스토그램용, 시세와 같은 학원당 한 표) */
+/** 학원마다 조건에 맞는 대표 과정 금액 (시세 분포·히스토그램용, 시세와 같은 학원당 한 표) */
 export function academyPrices(academies: RealAcademy[], subjectId: string, age: AgeGroup | null): number[] {
   return academies.flatMap((a) => {
-    const prices = a.courses.filter((c) => courseMatches(c, subjectId, age)).map((c) => c.price);
-    return prices.length ? [median(prices)] : [];
+    const rep = representativeCourse(a.courses.filter((c) => courseMatches(c, subjectId, age)));
+    return rep ? [rep.price] : [];
   });
-}
-
-/** 과정 금액 목록의 대표값 (학원 한 곳) */
-export function representativePrice(courses: Course[]): number | null {
-  return courses.length ? median(courses.map((c) => c.price)) : null;
 }

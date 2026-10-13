@@ -1,10 +1,16 @@
 // public/data/manifest.json 의 모양. scripts/update-data.ts 가 만들고 앱이 읽는다.
 
+export const MANIFEST_VERSION = 2;
+
 export interface DataManifest {
-  version: 1;
-  /** ISO 시각 */
+  version: 2;
+  /** 교육청에서 받은 시각 (ISO) */
   updatedAt: string;
-  /** 인증키 없이 받은 일부 표본(동작 확인용)인지 */
+  /** api: 인증키로 Open API 에서 받음(매주 최신) · file: 교육청이 매달 올리는 전국 파일 · sample: 개발용 표본 */
+  sourceKind: 'api' | 'file' | 'sample';
+  /** 전국 파일의 기준일 YYYY-MM-DD */
+  baseDate?: string;
+  /** 일부 학원만 담은 개발용 표본인지 */
   sampleMode: boolean;
   source: string;
   totals: {

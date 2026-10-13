@@ -14,7 +14,7 @@ import { useApp, type CalcItem } from '../store/AppContext';
 import type { AgeGroup } from '../types';
 
 function itemMarket(rows: MarketRow[], item: CalcItem) {
-  if (!item.subjectId || !SUBJECT_MAP[item.subjectId]?.inNeis || !item.sido) return null;
+  if (item.noMarket || !item.subjectId || !SUBJECT_MAP[item.subjectId]?.inNeis || !item.sido) return null;
   return marketForCourse(rows, { sido: item.sido, sigungu: item.sigungu }, { subjectId: item.subjectId, ages: item.age ? [item.age] : [] });
 }
 
@@ -203,9 +203,13 @@ export function BudgetPage() {
                           <p className="text-right text-[12px] text-ink-3">
                             {match && diff !== null ? (
                               <>
-                                {marketScopeName(match.row, market.mode ?? 'static', item)} {match.row.age ? AGE_LABELS[match.row.age] : ''} 중앙값 {manwon(match.row.median)} 대비{' '}
+                                {marketScopeName(match.row, market.mode ?? 'static')} {match.row.age ? AGE_LABELS[match.row.age] : ''} 중앙값 {manwon(match.row.median)} 대비{' '}
                                 <b className={diff > 0.005 ? 'text-pricey' : diff < -0.005 ? 'text-cheap' : 'text-ink'}>{signedPercent(diff)}</b>
                               </>
+                            ) : market.loading ? (
+                              '시세를 불러오는 중…'
+                            ) : item.noMarket ? (
+                              '특강·1:1 같은 과정이라 월 시세와 비교하지 않아요'
                             ) : item.subjectId && !SUBJECT_MAP[item.subjectId]?.inNeis ? (
                               '체육시설은 교육청 자료가 없어 시세 비교를 못 해요'
                             ) : item.subjectId ? (

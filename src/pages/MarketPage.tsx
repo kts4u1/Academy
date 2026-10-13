@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HBarList } from '../charts/HBarList';
 import { Histogram } from '../charts/Histogram';
 import { RangeStrip } from '../charts/RangeStrip';
-import { DataStamp, LoadingState, NoDataState } from '../components/DataState';
+import { DataStamp, ErrorState, LoadingState, NoDataState } from '../components/DataState';
 import { RegionPicker } from '../components/RegionPicker';
 import { EmptyState, PageHeader, PriceLevelBadge, Section, Segmented, SubjectTile } from '../components/ui';
 import { AGE_LABELS, AGE_ORDER, SUBJECT_MAP, SUBJECTS } from '../data/categories';
@@ -116,8 +116,14 @@ export function MarketPage() {
       </div>
 
       <div className="mt-4">
-        {availability.loading || (mode === 'live' && district.status === 'loading') || market.loading ? (
+        {availability.loading || (availability.mode === 'live' && district.status === 'loading') || market.loading ? (
           <LoadingState message={district.progress} />
+        ) : availability.mode === 'error' ? (
+          <ErrorState message={availability.error ?? '데이터를 불러오지 못했어요.'} onRetry={availability.retry} />
+        ) : district.status === 'error' ? (
+          <ErrorState message={district.error ?? '데이터를 불러오지 못했어요.'} onRetry={district.reload} />
+        ) : market.error ? (
+          <ErrorState message={market.error} onRetry={() => window.location.reload()} />
         ) : availability.mode === 'none' ? (
           <NoDataState />
         ) : !region ? (
@@ -134,7 +140,7 @@ export function MarketPage() {
                 <SubjectTile subjectId={subjectId} />
                 <div>
                   <p className="text-[13px] text-ink-2">
-                    {marketScopeName(main, mode, region)} {condition} 월 교습비
+                    {marketScopeName(main, mode)} {condition} 월 교습비
                   </p>
                   <p className="num text-[26px] font-bold leading-tight">중앙값 {manwon(main.median)}</p>
                 </div>
@@ -142,7 +148,7 @@ export function MarketPage() {
               <p className="num mt-2 text-sm text-ink-2">
                 보통 {manwon(main.p25)} ~ {manwon(main.p75)} · 10~90% {manwon(main.p10)} ~ {manwon(main.p90)} · {main.academies.toLocaleString()}곳 ({main.n.toLocaleString()}개 과정)
               </p>
-              {!local && <p className="mt-1 text-[12px] text-ink-3">{region.sigungu}에는 같은 조건으로 교습비를 공개한 곳이 {MIN_MARKET_N}곳 미만이라 {marketScopeName(main, mode, region)} 기준으로 보여 드려요.</p>}
+              {!local && <p className="mt-1 text-[12px] text-ink-3">{region.sigungu}에는 같은 조건으로 교습비를 공개한 곳이 {MIN_MARKET_N}곳 미만이라 {marketScopeName(main, mode)} 기준으로 보여 드려요.</p>}
               <div className="mt-4">
                 <RangeStrip stats={rangeStats(main)} format={manwon} />
               </div>
@@ -153,16 +159,16 @@ export function MarketPage() {
               )}
               {district.data && (
                 <div className="mt-3">
-                  <DataStamp data={district.data} onReload={district.reload} />
+                  <DataStamp data={district.data} onReload={district.reload} error={district.error} />
                 </div>
               )}
             </div>
 
             <Section title="안내받은 금액, 적정한가요?" desc="상담에서 들은 금액을 넣으면 시세에서 어디쯤인지 알려 드려요">
-              <QuoteChecker row={main} label={`${marketScopeName(main, mode, region)} ${condition}`} />
+              <QuoteChecker row={main} label={`${marketScopeName(main, mode)} ${condition}`} />
             </Section>
 
-            {byDistrict.length > 1 && (
+            {mode === 'static' && byDistrict.length > 1 && (
               <Section title={`${region.sido} 구별 ${condition} 시세`} desc="신고 교습비 중앙값 · 저렴한 순 · 누르면 그 지역으로">
                 <div className="card p-4">
                   <HBarList
@@ -180,7 +186,7 @@ export function MarketPage() {
               </Section>
             )}
 
-            {bySido.length > 1 && (
+            {mode === 'static' && bySido.length > 1 && (
               <Section title={`전국 시·도별 ${condition} 시세`} desc="신고 교습비 중앙값 · 저렴한 순">
                 <div className="card p-4">
                   <HBarList
@@ -200,7 +206,7 @@ export function MarketPage() {
                       key: r.subjectId,
                       label: SUBJECT_MAP[r.subjectId]?.name ?? r.subjectId,
                       value: r.median,
-                      sub: r.sigungu ? `${r.academies}곳` : `${r.sido} 전체`,
+                      sub: r.sigungu ? `${r.academies}곳` : marketScopeName(r, mode),
                       highlight: r.subjectId === subjectId,
                       onClick: () => set({ subject: r.subjectId }),
                     }))}

@@ -9,7 +9,7 @@
 import { idbClear, idbGet, idbSet } from '../store/idb';
 import { fetchAllNeisAcademies } from '../lib/neis';
 import { buildMarket, toRealAcademy, type MarketRow, type RealAcademy } from '../lib/realData';
-import type { DataManifest } from './manifest';
+import { MANIFEST_VERSION, type DataManifest } from './manifest';
 import { bucketsFor, EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames } from './regions';
 
 const BASE = 'data/';
@@ -34,44 +34,66 @@ export interface DistrictData {
 
 let manifestPromise: Promise<DataManifest | null> | null = null;
 
-/** 정적 데이터 목록. 아직 만들어진 적이 없으면 null */
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(url, init);
+  } catch {
+    throw new Error('데이터를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
+  }
+  if (!r.ok) throw Object.assign(new Error(`데이터를 불러오지 못했어요 (${r.status}). 잠시 후 다시 시도해 주세요.`), { status: r.status });
+  return (await r.json()) as T;
+}
+
+/**
+ * 정적 데이터 목록. 배포된 적이 없으면(404) null.
+ * 연결 오류는 기억하지 않고 던져서, 다시 시도하면 새로 받는다.
+ */
 export function loadManifest(): Promise<DataManifest | null> {
-  manifestPromise ??= fetch(`${BASE}manifest.json`)
-    .then((r) => (r.ok ? (r.json() as Promise<DataManifest>) : null))
-    .then((m) => (m && m.version === 1 ? m : null))
-    .catch(() => null);
+  manifestPromise ??= fetchJson<DataManifest>(`${BASE}manifest.json`, { cache: 'no-cache' })
+    .then((m) => (m && m.version === MANIFEST_VERSION ? m : null))
+    .catch((err: Error & { status?: number }) => {
+      if (err.status === 404) return null;
+      manifestPromise = null;
+      throw err;
+    });
   return manifestPromise;
 }
 
+/** 매주 내용이 바뀌는 파일이라 갱신 시각을 붙여 브라우저 캐시의 옛 파일을 쓰지 않게 한다 */
+const versioned = (m: DataManifest, file: string) => `${BASE}${file}?v=${encodeURIComponent(m.updatedAt)}`;
+
 const fileCache = new Map<string, Promise<RealAcademy[]>>();
-function loadFile(file: string): Promise<RealAcademy[]> {
-  let p = fileCache.get(file);
+function loadFile(m: DataManifest, file: string): Promise<RealAcademy[]> {
+  const url = versioned(m, file);
+  let p = fileCache.get(url);
   if (!p) {
-    p = fetch(BASE + file).then((r) => {
-      if (!r.ok) throw new Error(`데이터 파일을 불러오지 못했습니다 (${r.status})`);
-      return r.json() as Promise<RealAcademy[]>;
-    });
-    p.catch(() => fileCache.delete(file));
-    fileCache.set(file, p);
+    p = fetchJson<RealAcademy[]>(url);
+    p.catch(() => fileCache.delete(url));
+    fileCache.set(url, p);
   }
   return p;
 }
 
 let marketPromise: Promise<MarketRow[]> | null = null;
-export function loadStaticMarket(): Promise<MarketRow[]> {
-  marketPromise ??= fetch(`${BASE}market.json`)
-    .then((r) => (r.ok ? (r.json() as Promise<{ rows: MarketRow[] }>) : { rows: [] }))
+export async function loadStaticMarket(): Promise<MarketRow[]> {
+  const m = await loadManifest();
+  if (!m) return [];
+  marketPromise ??= fetchJson<{ rows: MarketRow[] }>(versioned(m, 'market.json'))
     .then((d) => d.rows)
-    .catch(() => []);
+    .catch((err) => {
+      marketPromise = null;
+      throw err;
+    });
   return marketPromise;
 }
 
 async function loadStaticDistrict(m: DataManifest, sido: string, sigungu: string): Promise<DistrictData> {
   const entry = m.districts.find((d) => d.sido === sido && d.sigungu === sigungu);
-  const academies = entry?.file ? await loadFile(entry.file) : [];
+  const academies = entry?.file ? await loadFile(m, entry.file) : [];
   const bucketNames = new Set(bucketsFor({ sido, sigungu }));
   const bucketFiles = m.buckets.filter((b) => b.sido === sido && bucketNames.has(b.name));
-  const unknownDistrict = (await Promise.all(bucketFiles.map((b) => loadFile(b.file)))).flat();
+  const unknownDistrict = (await Promise.all(bucketFiles.map((b) => loadFile(m, b.file)))).flat();
   const cityWide = unknownDistrict.length > 0 && unknownDistrict.length / (unknownDistrict.length + academies.length) > 0.5;
   return { mode: 'static', sido, sigungu, academies, unknownDistrict, cityWide, updatedAt: m.updatedAt, sampleMode: m.sampleMode };
 }
@@ -118,7 +140,8 @@ async function loadLiveDistrict(
     cityWide: filtered.cityWide,
     sampleMode,
   };
-  await idbSet(liveKey(sido, sigungu), entry);
+  // 보관이 실패해도(저장 공간 부족 등) 받은 데이터는 바로 보여 준다
+  void idbSet(liveKey(sido, sigungu), entry).catch(() => undefined);
   return { mode: 'live', sido, sigungu, ...entry, updatedAt: new Date(entry.fetchedAt).toISOString() };
 }
 

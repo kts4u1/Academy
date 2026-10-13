@@ -57,14 +57,14 @@ function CustomForm({ onAdd, people }: { onAdd: (item: Omit<CalcItem, 'id'>) => 
           </datalist>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div>
           <label className="label" htmlFor="cf-monthly">
             월 금액(만원)
           </label>
           <input id="cf-monthly" className="field num" inputMode="decimal" placeholder="예: 25" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </div>
-        <div>
+        <div className="order-last col-span-2 sm:order-none sm:col-span-1">
           <label className="label" htmlFor="cf-subject">
             과목
           </label>
@@ -109,7 +109,7 @@ function CustomForm({ onAdd, people }: { onAdd: (item: Omit<CalcItem, 'id'>) => 
 }
 
 export function BudgetPage() {
-  const { calc, addCalc, updateCalc, removeCalc } = useApp();
+  const { calc, addCalc, updateCalc, removeCalc, showToast } = useApp();
   const availability = useAvailability();
   // 정적 데이터면 시세 파일만 쓰고, 브라우저에서 받는 경우에만 항목 지역 데이터를 받는다
   const { states } = useDistricts(availability.mode === 'live' ? calc.filter((c) => c.sido && c.subjectId).map((c) => ({ sido: c.sido, sigungu: c.sigungu })) : []);
@@ -180,7 +180,17 @@ export function BudgetPage() {
                               {item.reportedPrice && <span>· 교육청 신고 {manwon(item.reportedPrice)}</span>}
                             </div>
                           </div>
-                          <button type="button" onClick={() => removeCalc(item.id)} className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2" aria-label={`${item.name} 삭제`}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeCalc(item.id);
+                              const { id: _id, ...rest } = item;
+                              void _id;
+                              showToast('삭제했어요', { label: '되돌리기', onClick: () => addCalc(rest) });
+                            }}
+                            className="-mr-1 -mt-1 rounded-lg p-2.5 text-ink-3 hover:bg-surface-2"
+                            aria-label={`${item.name} 삭제`}
+                          >
                             <Trash aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </div>

@@ -1,4 +1,4 @@
-import { ChartColumn, Heart, House, MapPin, Scale, Search, Settings, Wallet } from 'lucide-react';
+import { ArrowUp, ChartColumn, Heart, House, MapPin, Scale, Search, Settings, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { daysSince, useAvailability } from '../hooks';
@@ -40,7 +40,7 @@ function LocationChip() {
           setDraft(settings.home ?? { sido: '서울', sigungu: '강남구' });
           setOpen(true);
         }}
-        className="inline-flex max-w-[9rem] items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
+        className="inline-flex min-h-[36px] max-w-[9rem] items-center gap-1 rounded-full border border-line bg-surface px-3 py-1 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
         aria-label="내 동네 설정"
       >
         <MapPin aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-accent" />
@@ -71,14 +71,16 @@ function LocationChip() {
   );
 }
 
+// 홈 화면 앱(노치 아래까지 그리는 경우)에서는 머리글 배경이 상태 표시줄 영역까지 채워지게 위쪽 여백을 준다.
+// 단일 파일 데모는 감싸는 쪽이 이미 위쪽 여백을 주므로 그만큼 내려서 붙는다.
+const SINGLE = typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__;
+const HEADER_STYLE = SINGLE ? { top: 'env(safe-area-inset-top, 0px)' } : { top: 0, paddingTop: 'env(safe-area-inset-top, 0px)' };
+
 function Header() {
   const { favorites, compare } = useApp();
   return (
-    <header
-      className="sticky z-30 border-b border-line bg-surface/95 backdrop-blur"
-      style={{ top: 'env(safe-area-inset-top, 0px)' }}
-    >
-      <div className="mx-auto flex h-14 max-w-app items-center gap-3 px-4">
+    <header className="sticky z-30 border-b border-line bg-surface/95 backdrop-blur" style={HEADER_STYLE}>
+      <div className="mx-auto flex h-14 max-w-app items-center gap-2 px-4">
         <Logo />
         <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="주요 메뉴">
           {TABS.map((tab) => (
@@ -99,11 +101,11 @@ function Header() {
         </nav>
         <div className="ml-auto flex items-center gap-1">
           <LocationChip />
-          <Link to="/favorites" className="relative rounded-lg p-2 text-ink-2 hover:bg-surface-2" aria-label={`찜한 학원 ${favorites.length}곳`}>
+          <Link to="/favorites" className="relative rounded-lg p-2.5 text-ink-2 hover:bg-surface-2 active:bg-surface-2" aria-label={`찜한 학원 ${favorites.length}곳`}>
             <Heart className="h-5 w-5" />
-            {favorites.length > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-pricey" aria-hidden="true" />}
+            {favorites.length > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-pricey" aria-hidden="true" />}
           </Link>
-          <Link to="/settings" className="rounded-lg p-2 text-ink-2 hover:bg-surface-2" aria-label="설정">
+          <Link to="/settings" className="rounded-lg p-2.5 text-ink-2 hover:bg-surface-2 active:bg-surface-2" aria-label="설정">
             <Settings className="h-5 w-5" />
           </Link>
         </div>
@@ -192,12 +194,54 @@ function DataStatusBanner() {
 }
 
 function Toast() {
-  const { toast } = useApp();
+  const { toast, hideToast } = useApp();
   if (!toast) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 md:bottom-8" role="status" aria-live="polite">
-      <div className="rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-bg shadow-lg">{toast}</div>
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-50 flex justify-center px-4 md:bottom-8"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-3 rounded-xl bg-ink py-1.5 pl-4 pr-1.5 text-sm font-medium text-bg shadow-lg">
+        <span className="py-1">{toast.message}</span>
+        {toast.action ? (
+          <button
+            type="button"
+            className="pointer-events-auto rounded-lg px-3 py-2 font-bold text-tag hover:bg-white/10"
+            onClick={() => {
+              toast.action!.onClick();
+              hideToast();
+            }}
+          >
+            {toast.action.label}
+          </button>
+        ) : (
+          <span className="pr-2.5" />
+        )}
+      </div>
     </div>
+  );
+}
+
+/** 긴 목록을 내려 보다가 한 번에 맨 위로 (홈 화면 앱에는 브라우저 기능이 없다) */
+function BackToTop() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShow(window.scrollY > window.innerHeight * 2);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className="fixed right-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface text-ink-2 shadow-lg bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6"
+      aria-label="맨 위로"
+    >
+      <ArrowUp aria-hidden="true" className="h-5 w-5" />
+    </button>
   );
 }
 
@@ -222,6 +266,7 @@ export function Layout() {
         <Outlet />
       </main>
       <BottomNav />
+      <BackToTop />
       <Toast />
     </div>
   );

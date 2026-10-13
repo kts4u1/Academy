@@ -31,7 +31,13 @@ function CourseRow({ course, selected, onSelect, rows, academy }: { course: Cour
   return (
     <li>
       <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${selected ? 'border-accent bg-accent-soft/40' : 'border-line'} ${comparable ? '' : 'opacity-75'}`}>
-        <input type="radio" name="course" className="mt-1 accent-[rgb(var(--accent))]" checked={selected} onChange={onSelect} />
+        <input type="radio" name="course" className="peer sr-only" checked={selected} onChange={onSelect} />
+        <span
+          aria-hidden="true"
+          className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent ${selected ? 'border-accent' : 'border-ink-3/50'}`}
+        >
+          {selected && <span className="h-2.5 w-2.5 rounded-full bg-accent" />}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] font-medium leading-snug">{course.name}</span>
           <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-ink-3">
@@ -96,6 +102,10 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
       }
     >
       <div className="flex flex-col gap-4">
+        <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
+          <b className="block">{academy.name}</b>
+          <span className="text-ink-3">{course ? `${course.name} · 신고 ${manwon(course.price)}` : '교습비 미공개'}</span>
+        </p>
         <div>
           <label className="label" htmlFor="budget-person">
             누구의 학원비인가요?
@@ -160,6 +170,14 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
   const localPrices = comparable && match && !match.widened ? academyPrices(data.academies, comparable.subjectId!, rawAge) : [];
   const alternatives = comparable ? cheaperAlternatives(data, academy, comparable) : [];
   const mode = market.mode ?? data.mode;
+  const phoneOk = callablePhone(academy.phone);
+  const [showAllCourses, setShowAllCourses] = useState(false);
+  const COURSE_PREVIEW = 6;
+  // 접힌 목록에도 고른 과정은 보이게 한다
+  const visibleCourses =
+    showAllCourses || sortedCourses.length <= COURSE_PREVIEW + 1
+      ? sortedCourses
+      : Array.from(new Set([...sortedCourses.slice(0, COURSE_PREVIEW), ...(selected ? [selected] : [])]));
 
   return (
     <div>
@@ -176,19 +194,51 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" className="btn-ghost" onClick={actions.onFavorite} aria-pressed={actions.fav}>
-          <Heart aria-hidden="true" className={`h-4 w-4 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
+      {/* 휴대폰에서 엄지로 누르기 쉬운 같은 크기의 버튼들 */}
+      <div className={`mt-4 grid gap-2 ${phoneOk ? 'grid-cols-4' : 'grid-cols-3'} sm:flex sm:flex-wrap`}>
+        {phoneOk && (
+          <a href={`tel:${academy.phone}`} className="action-btn">
+            <Phone aria-hidden="true" className="h-5 w-5 text-accent sm:h-4 sm:w-4" />
+            전화
+          </a>
+        )}
+        <button type="button" className="action-btn" onClick={actions.onFavorite} aria-pressed={actions.fav}>
+          <Heart aria-hidden="true" className={`h-5 w-5 sm:h-4 sm:w-4 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
           {actions.fav ? '찜함' : '찜하기'}
         </button>
-        <button type="button" className="btn-ghost" onClick={() => actions.onCompare(selected ? courseKey(selected) : null)}>
-          {actions.comparing ? <Check aria-hidden="true" className="h-4 w-4 text-accent" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
-          {actions.comparing ? '비교함 과정 바꾸기' : '비교함에 담기'}
+        <button type="button" className="action-btn" onClick={() => actions.onCompare(selected ? courseKey(selected) : null)}>
+          {actions.comparing ? <Check aria-hidden="true" className="h-5 w-5 text-accent sm:h-4 sm:w-4" /> : <Plus aria-hidden="true" className="h-5 w-5 sm:h-4 sm:w-4" />}
+          {actions.comparing ? '과정 바꾸기' : '비교함'}
         </button>
-        <button type="button" className="btn-ghost" onClick={() => setBudgetOpen(true)}>
-          <Wallet aria-hidden="true" className="h-4 w-4" />내 학원비에 추가
+        <button type="button" className="action-btn" onClick={() => setBudgetOpen(true)}>
+          <Wallet aria-hidden="true" className="h-5 w-5 sm:h-4 sm:w-4" />
+          내 학원비
         </button>
       </div>
+
+      {/* 고른 과정의 시세 요약: 과정이 많아도 첫 화면에서 답이 보이게 */}
+      {comparable && (
+        <button
+          type="button"
+          onClick={() => document.getElementById('market')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="card mt-3 flex w-full items-center justify-between gap-3 p-3.5 text-left sm:hidden"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-[12px] text-ink-3">{comparable.name}</span>
+            <span className="num text-[20px] font-bold">{manwon(comparable.price)}</span>
+          </span>
+          {market.loading ? (
+            <span className="text-[12px] text-ink-3">시세 확인 중…</span>
+          ) : pos && match ? (
+            <span className="flex shrink-0 flex-col items-end gap-1">
+              <PriceLevelBadge level={pos.level} diff={pos.diffFromMedian} />
+              <span className="text-[11px] text-ink-3">중앙값 {manwon(match.row.median)} · 자세히 ↓</span>
+            </span>
+          ) : (
+            <span className="text-[12px] text-ink-3">시세 없음</span>
+          )}
+        </button>
+      )}
 
       <dl className="card mt-4 grid gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
         <div className="flex gap-2 sm:col-span-2">
@@ -242,16 +292,23 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
             교육청 자료에 교습비가 공개되지 않았어요. 학원(교습소가 아닌 곳)은 공개 자료에 교습비가 비어 있는 경우가 많아요. 전화로 문의한 금액은 ‘내 학원비’에 넣어 관리할 수 있어요.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {sortedCourses.map((c) => (
-              <CourseRow key={courseKey(c)} course={c} selected={selected === c} onSelect={() => setSelectedKey(courseKey(c))} rows={market.rows} academy={academy} />
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col gap-2">
+              {visibleCourses.map((c) => (
+                <CourseRow key={courseKey(c)} course={c} selected={selected === c} onSelect={() => setSelectedKey(courseKey(c))} rows={market.rows} academy={academy} />
+              ))}
+            </ul>
+            {visibleCourses.length < sortedCourses.length && (
+              <button type="button" className="btn-ghost mt-2 w-full" onClick={() => setShowAllCourses(true)}>
+                전체 {sortedCourses.length}개 과정 보기
+              </button>
+            )}
+          </>
         )}
       </Section>
 
       {comparable && (
-        <Section title="시세와 비교" desc={match ? `${marketLabel(match.row, mode)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
+        <Section id="market" title="시세와 비교" desc={match ? `${marketLabel(match.row, mode)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
           {market.loading ? (
             <LoadingState message="교습비 시세를 불러오는 중…" />
           ) : market.error ? (
@@ -323,7 +380,7 @@ export function AcademyPage() {
   return (
     <div>
       <div className="pb-2 pt-2">
-        <BackButton />
+        <BackButton fallback={`/search?sido=${encodeURIComponent(sido)}&sigungu=${encodeURIComponent(sigungu)}`} />
       </div>
       <div>
         <DistrictGate state={district} onRetry={district.reload}>

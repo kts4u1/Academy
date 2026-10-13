@@ -2,6 +2,8 @@
 const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
+  // 터치 화면에서는 hover 효과가 눌린 채로 남지 않게 마우스가 있을 때만 적용
+  future: { hoverOnlyWhenSupported: true },
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {

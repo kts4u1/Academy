@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { InstallSection } from '../components/InstallPrompt';
 import { RegionPicker } from '../components/RegionPicker';
 import { PageHeader, Section, Segmented } from '../components/ui';
 import { clearLiveCache } from '../data/source';
@@ -50,6 +51,10 @@ export function SettingsPage() {
           />
           {!settings.home && <p className="mt-2 text-[12px] text-ink-3">아직 정하지 않았어요. 고르면 바로 저장돼요.</p>}
         </div>
+      </Section>
+
+      <Section title="홈 화면에 앱으로 설치">
+        <InstallSection />
       </Section>
 
       <Section title="화면 테마">

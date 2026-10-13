@@ -43,6 +43,15 @@ export interface CalcItem {
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+export interface ToastState {
+  message: string;
+  action?: ToastAction;
+}
+
 export interface Settings {
   home: { sido: string; sigungu: string } | null;
   /** 정적 데이터가 없을 때(로컬 실행 등) 브라우저에서 교육청 자료를 직접 받는 데 쓰는 인증키 */
@@ -79,8 +88,10 @@ interface AppContextValue {
   updateSettings: (patch: Partial<Settings>) => void;
   resetAll: () => void;
 
-  toast: string | null;
-  showToast: (message: string) => void;
+  toast: ToastState | null;
+  /** action: 되돌리기 같은 버튼 (누르면 실행하고 알림을 닫는다) */
+  showToast: (message: string, action?: ToastAction) => void;
+  hideToast: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -112,7 +123,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (merged.home && !findDistrict(merged.home.sido, merged.home.sigungu)) merged.home = null;
     return merged;
   }, [storedSettings]);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
   // 테마: 'system' 이면 속성을 건드리지 않아 OS(또는 호스트) 설정을 따른다.
@@ -120,12 +131,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     if (settings.theme === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', settings.theme);
+    // 휴대폰 상태 표시줄 색을 머리글 색과 맞춘다 (테마를 직접 고르면 시스템 설정 대신 그 색)
+    const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+    for (const m of metas) {
+      m.dataset.media ??= m.getAttribute('media') ?? '';
+      if (settings.theme === 'system') {
+        if (m.dataset.media) m.setAttribute('media', m.dataset.media);
+      } else {
+        m.removeAttribute('media');
+        m.setAttribute('content', settings.theme === 'dark' ? '#161e28' : '#ffffff');
+      }
+    }
+    if (settings.theme === 'system') {
+      for (const m of metas) m.setAttribute('content', m.dataset.media?.includes('dark') ? '#161e28' : '#ffffff');
+    }
   }, [settings.theme]);
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
+  const hideToast = useCallback(() => {
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2200);
+    setToast(null);
+  }, []);
+  const showToast = useCallback((message: string, action?: ToastAction) => {
+    setToast({ message, action });
+    window.clearTimeout(toastTimer.current);
+    // 되돌리기 버튼이 있으면 누를 시간을 더 준다
+    toastTimer.current = window.setTimeout(() => setToast(null), action ? 5000 : 2200);
   }, []);
 
   const toggleFavorite = useCallback(
@@ -178,6 +208,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     toast,
     showToast,
+    hideToast,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

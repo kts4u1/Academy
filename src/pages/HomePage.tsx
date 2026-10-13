@@ -2,6 +2,7 @@ import { ChevronRight, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ErrorState, LoadingState, NoDataState } from '../components/DataState';
+import { InstallBanner } from '../components/InstallPrompt';
 import { RegionPicker } from '../components/RegionPicker';
 import { Section, SubjectTile } from '../components/ui';
 import { GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
@@ -88,13 +89,17 @@ export function HomePage() {
 
   return (
     <div>
+      <div className="pt-2">
+        <InstallBanner />
+      </div>
       <section className="pb-2 pt-4 md:pt-8">
         <p className="eyebrow">교육청 신고 교습비 · 전국 256개 시·군·구</p>
-        <h1 className="mt-2 text-[28px] font-bold leading-[1.2] tracking-tight md:text-[36px]">
+        <h1 className={`mt-2 font-bold leading-[1.2] tracking-tight md:text-[36px] ${home ? 'text-[23px]' : 'text-[28px]'}`}>
           우리 동네 학원비,
           <br className="hidden sm:block" /> 교육청 신고가로 비교하세요
         </h1>
-        <p className="mt-3 max-w-xl text-[15px] text-ink-2">
+        {/* 내 동네를 정한 뒤에는 휴대폰에서 설명을 줄여 우리 동네 시세가 첫 화면에 보이게 */}
+        <p className={`mt-3 max-w-xl text-[15px] text-ink-2 ${home ? 'hidden md:block' : ''}`}>
           학원·교습소가 교육청에 신고한 교습비를 매주 받아서 같은 과목·같은 연령끼리 비교해 드려요. 예시 데이터 없이 실제 자료만 보여 줍니다.
         </p>
         <form
@@ -110,7 +115,7 @@ export function HomePage() {
           </label>
           <div className="relative flex-1">
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-3" />
-            <input id="home-search" value={q} onChange={(e) => setQ(e.target.value)} className="field h-12 pl-10 text-[15px]" placeholder="동네 + 과목 (예: 목동 영어, 분당 수학)" />
+            <input id="home-search" type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} className="field h-12 pl-10" placeholder="동네 + 과목 (예: 목동 영어)" />
           </div>
           <button type="submit" className="btn-primary h-12 px-5">
             검색
@@ -130,7 +135,7 @@ export function HomePage() {
         desc="교육청에 신고된 월 교습비 · 교습비를 공개한 곳이 많은 과목 순"
         action={
           home && (
-            <Link to={`/market?sido=${encodeURIComponent(home.sido)}&sigungu=${encodeURIComponent(home.sigungu)}`} className="inline-flex items-center text-[13px] font-semibold text-accent">
+            <Link to={`/market?sido=${encodeURIComponent(home.sido)}&sigungu=${encodeURIComponent(home.sigungu)}`} className="inline-flex shrink-0 items-center whitespace-nowrap py-2 text-[13px] font-semibold text-accent">
               시세 더 보기 <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </Link>
           )
@@ -149,23 +154,34 @@ export function HomePage() {
         )}
       </Section>
 
-      {GROUPS.map((g) => (
-        <Section key={g.id} title={g.name} desc={g.desc}>
-          <ul className="grid grid-cols-5 gap-x-1 gap-y-2 sm:grid-cols-6 lg:grid-cols-9">
-            {subjectsOf(g.id).map((s) => (
-              <li key={s.id}>
-                <Link
-                  to={searchPath({ sido: home?.sido, sigungu: home?.sigungu, subject: s.id })}
-                  className={`flex flex-col items-center gap-1 rounded-xl py-1.5 hover:bg-surface ${s.inNeis ? '' : 'opacity-60'}`}
-                >
-                  <SubjectTile subjectId={s.id} size="md" />
-                  <span className="text-center text-[12px] font-medium leading-tight text-ink-2">{s.name}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ))}
+      {/* 교육청 자료가 있는 교과·예술을 먼저, 자료가 없는 체육은 뒤에 */}
+      {[...GROUPS].sort((a, b) => Number(a.id === 'sports') - Number(b.id === 'sports')).map((g) => {
+        const noData = g.id === 'sports';
+        return (
+          <Section
+            key={g.id}
+            title={g.name}
+            desc={noData ? '수영 · 태권도 · 복싱 · 주짓수 · 구기' : g.desc}
+            action={noData ? <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-ink-3">교육청 자료 없음</span> : undefined}
+          >
+            <ul className="grid grid-cols-4 gap-x-2 gap-y-3 sm:grid-cols-6 lg:grid-cols-9">
+              {subjectsOf(g.id).map((s) => (
+                <li key={s.id}>
+                  <Link
+                    to={searchPath({ sido: home?.sido, sigungu: home?.sigungu, subject: s.id })}
+                    className="group flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors hover:bg-surface active:bg-surface-2"
+                  >
+                    <span className="transition-transform duration-150 group-hover:-translate-y-0.5 group-active:scale-95">
+                      <SubjectTile subjectId={s.id} size="lg" />
+                    </span>
+                    <span className="text-center text-[12px] font-medium leading-tight text-ink-2">{s.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        );
+      })}
 
       <Section title="데이터는 이렇게 만들어요">
         <ul className="card flex flex-col gap-2 p-4 text-sm text-ink-2">

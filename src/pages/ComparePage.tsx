@@ -25,12 +25,102 @@ function Cell({ children, best }: { children: ReactNode; best?: boolean }) {
   return <td className={`num px-3 py-2.5 align-top text-[13px] ${best ? 'font-bold text-cheap' : ''}`}>{children}</td>;
 }
 
+function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode: DataMode; minPrice: number | null; onRemove: () => void; onCourse: (course: string | null) => void }) {
+  const per = c.course ? pricePerSession(c.course) : null;
+  const cheapest = minPrice !== null && c.course?.price === minPrice;
+  return (
+    <article className={`card p-4 ${cheapest ? 'ring-1 ring-cheap' : ''}`}>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <Link to={academyPath(c.item.ref, c.item.course)} className="text-[16px] font-bold leading-snug hover:text-accent">
+            {c.item.ref.name}
+          </Link>
+          {c.academy && (
+            <p className="mt-0.5 text-[12px] text-ink-3">
+              {c.academy.kind} · {c.academy.unassigned ? `${c.academy.sigungu}(구 미상)` : c.academy.sigungu} {c.academy.dong}
+            </p>
+          )}
+        </div>
+        <button type="button" onClick={onRemove} className="-mr-2 -mt-1 rounded-lg p-2.5 text-ink-3 active:bg-surface-2" aria-label={`${c.item.ref.name} 빼기`}>
+          <X aria-hidden="true" className="h-5 w-5" />
+        </button>
+      </div>
+
+      {c.academy && c.academy.courses.length > 0 ? (
+        <label className="mt-3 block">
+          <span className="sr-only">{c.item.ref.name} 비교할 과정</span>
+          <select className="field py-2" value={c.course ? courseKey(c.course) : ''} onChange={(e) => onCourse(e.target.value || null)}>
+            {!c.course && <option value="">과정 선택</option>}
+            {c.academy.courses.map((course) => (
+              <option key={courseKey(course)} value={courseKey(course)}>
+                {course.name} · {manwon(course.price)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="mt-3 text-[13px] text-ink-3">{c.academy ? '교육청 자료에 교습비가 공개되지 않았어요' : '이번 자료에서 찾지 못했어요'}</p>
+      )}
+
+      {c.course && (
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+          <p className="num text-[24px] font-bold leading-none">
+            {manwon(c.course.price)}
+            {cheapest && <span className="price-tag ml-1.5 align-middle">최저</span>}
+            <span className="mt-1 block text-[12px] font-medium text-ink-3">월 신고 교습비{per ? ` · 회당 약 ${unitPrice(per)} (주 ${c.course.sessionsPerWeek}회)` : ''}</span>
+          </p>
+          {c.position && c.match ? (
+            <span className="flex flex-col items-start gap-1">
+              <PriceLevelBadge level={c.position.level} diff={c.position.diffFromMedian} />
+              <span className="text-[11px] text-ink-3">
+                {marketScopeName(c.match.row, mode)} {c.match.row.age ? AGE_LABELS[c.match.row.age] : ''} 중앙값 {manwon(c.match.row.median)}
+              </span>
+            </span>
+          ) : (
+            <span className="text-[12px] text-ink-3">{!isComparableCourse(c.course) ? '비교 제외 과정' : '시세 없음'}</span>
+          )}
+        </div>
+      )}
+
+      {c.academy && (
+        <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3 text-[12px]">
+          <div>
+            <dt className="text-ink-3">과목·대상</dt>
+            <dd className="mt-0.5 font-medium">
+              {c.course?.subjectId ? SUBJECT_MAP[c.course.subjectId]?.name : (c.academy.subjects.map((id) => SUBJECT_MAP[id]?.name).join('·') || '-')}
+              {c.course && c.course.ages.length > 0 && ` · ${c.course.ages.map((a) => AGE_LABELS[a]).join('·')}`}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-3">정원</dt>
+            <dd className="num mt-0.5 font-medium">{c.academy.capacity ? `${c.academy.capacity.toLocaleString()}명` : '-'}</dd>
+          </div>
+          <div>
+            <dt className="text-ink-3">자료 갱신</dt>
+            <dd className="num mt-0.5 font-medium">{c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}</dd>
+          </div>
+        </dl>
+      )}
+    </article>
+  );
+}
+
 export function ComparePage() {
-  const { compare, removeCompare, clearCompare, setCompareCourse } = useApp();
+  const { compare, removeCompare, clearCompare, setCompareCourse, addCompare, showToast } = useApp();
   const { states, loading, reload } = useDistricts(compare.map((c) => c.ref));
   const datas = Array.from(states.values()).map((s) => s.data);
   const market = useMarket(datas);
   const mode: DataMode = market.mode ?? 'static';
+  const removeWithUndo = (id: string) => {
+    const prev = compare.find((c) => c.ref.id === id);
+    removeCompare(id);
+    if (prev) showToast('비교함에서 뺐어요', { label: '되돌리기', onClick: () => addCompare(prev) });
+  };
+  const clearWithUndo = () => {
+    const prev = compare;
+    clearCompare();
+    showToast(`비교함을 비웠어요 (${prev.length}곳)`, { label: '되돌리기', onClick: () => prev.forEach((c) => addCompare(c)) });
+  };
 
   if (compare.length === 0) {
     return (
@@ -79,7 +169,7 @@ export function ComparePage() {
         title="비교함"
         subtitle={`${compare.length} / ${MAX_COMPARE}곳 · 교육청 신고 교습비 기준`}
         action={
-          <button type="button" className="btn-ghost px-3 py-1.5 text-[13px]" onClick={clearCompare}>
+          <button type="button" className="btn-ghost px-3 py-2 text-[13px]" onClick={clearWithUndo}>
             <Trash aria-hidden="true" className="h-4 w-4" />
             비우기
           </button>
@@ -92,11 +182,29 @@ export function ComparePage() {
         </p>
       )}
 
-      <div className="card overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left">
+      {/* 휴대폰: 학원마다 카드 하나 (표는 좁은 화면에서 읽기 어렵다) */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {priced.length > 1 && (
+          <div className="card p-4">
+            <p className="mb-2 text-[13px] font-semibold text-ink-2">월 신고 교습비 낮은 순</p>
+            <HBarList
+              format={manwon}
+              items={[...priced]
+                .sort((a, b) => a.course!.price - b.course!.price)
+                .map((c) => ({ key: c.item.ref.id, label: c.item.ref.name, value: c.course!.price, highlight: c.course!.price === minPrice }))}
+            />
+          </div>
+        )}
+        {columns.map((c) => (
+          <MobileCard key={c.item.ref.id} c={c} mode={mode} minPrice={minPrice} onRemove={() => removeWithUndo(c.item.ref.id)} onCourse={(course) => setCompareCourse(c.item.ref.id, course)} />
+        ))}
+      </div>
+
+      <div className="card hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
           <thead>
             <tr className="border-b border-line">
-              <th scope="col" className="w-28 px-3 py-3 text-[12px] font-semibold text-ink-3">
+              <th scope="col" className="w-32 px-3 py-3 text-[12px] font-semibold text-ink-3">
                 항목
               </th>
               {columns.map((c) => (
@@ -105,7 +213,7 @@ export function ComparePage() {
                     <Link to={academyPath(c.item.ref, c.item.course)} className="text-[14px] font-bold leading-snug hover:text-accent">
                       {c.item.ref.name}
                     </Link>
-                    <button type="button" onClick={() => removeCompare(c.item.ref.id)} className="-mr-1 rounded p-0.5 text-ink-3 hover:bg-surface-2" aria-label={`${c.item.ref.name} 빼기`}>
+                    <button type="button" onClick={() => removeWithUndo(c.item.ref.id)} className="-mr-2 -mt-1 rounded-lg p-2 text-ink-3 hover:bg-surface-2" aria-label={`${c.item.ref.name} 빼기`}>
                       <X aria-hidden="true" className="h-4 w-4" />
                     </button>
                   </div>
@@ -233,7 +341,7 @@ export function ComparePage() {
       </div>
 
       {priced.length > 1 && (
-        <Section title="월 신고 교습비" desc="낮은 순">
+        <Section title="월 신고 교습비" desc="낮은 순" className="hidden md:block">
           <div className="card p-4">
             <HBarList
               format={manwon}

@@ -40,11 +40,11 @@ export function FavoritesPage() {
               </div>
               <button
                 type="button"
-                className="relative z-10 rounded-lg p-1.5 text-pricey hover:bg-surface-2"
+                className="relative z-10 -mr-1 -mt-1 rounded-lg p-2.5 text-pricey hover:bg-surface-2"
                 aria-label={`${f.name} 찜 해제`}
                 onClick={() => {
                   toggleFavorite(f);
-                  showToast('찜을 해제했어요');
+                  showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => toggleFavorite(f) });
                 }}
               >
                 <Heart aria-hidden="true" className="h-5 w-5 fill-pricey" />

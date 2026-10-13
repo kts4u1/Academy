@@ -1,10 +1,27 @@
 {
-  "name": "학원비교 - 학원 검색 & 학원비 가격비교",
+  "id": "./",
+  "name": "학원비교 - 교육청 신고 교습비로 학원비 비교",
   "short_name": "학원비교",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#f4f6f8",
-  "theme_color": "#0b7a69",
+  "description": "교육청 학원교습소정보로 우리 동네 학원을 찾고 같은 과목·대상끼리 교습비를 비교해요.",
   "lang": "ko",
-  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f3f6f8",
+  "theme_color": "#0b7a69",
+  "categories": ["education", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "학원 찾기", "short_name": "검색", "url": "./#/search", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "교습비 시세", "short_name": "시세", "url": "./#/market", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "내 학원비", "short_name": "내 학원비", "url": "./#/budget", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
 }

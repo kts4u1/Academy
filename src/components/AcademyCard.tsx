@@ -25,14 +25,16 @@ export function placeOf(academy: RealAcademy): string {
 
 /** 찜·비교 버튼 (카드·상세 공용) */
 export function useAcademyActions(academy: RealAcademy, region: { sido: string; sigungu: string }) {
-  const { toggleFavorite, isFavorite, addCompare, inCompare, removeCompare, showToast } = useApp();
+  const { toggleFavorite, isFavorite, addCompare, inCompare, removeCompare, showToast, compare } = useApp();
   const ref = refOf(academy, region);
   return {
     fav: isFavorite(academy.id),
     comparing: inCompare(academy.id),
     onFavorite: () => {
-      const added = toggleFavorite({ ...ref, dong: academy.dong, place: placeOf(academy), kind: academy.kind, subjects: academy.subjects });
-      showToast(added ? '찜했어요' : '찜을 해제했어요');
+      const item = { ...ref, dong: academy.dong, place: placeOf(academy), kind: academy.kind, subjects: academy.subjects };
+      const added = toggleFavorite(item);
+      if (added) showToast('찜했어요');
+      else showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => toggleFavorite(item) });
     },
     /** course: 과정 키 (courseKey) */
     onCompare: (course: string | null) => {
@@ -40,8 +42,9 @@ export function useAcademyActions(academy: RealAcademy, region: { sido: string; 
       showToast(r === 'full' ? '비교함은 최대 4곳까지 담을 수 있어요' : r === 'updated' ? '비교할 과정을 바꿨어요' : '비교함에 담았어요');
     },
     removeCompare: () => {
+      const prev = compare.find((c) => c.ref.id === academy.id);
       removeCompare(academy.id);
-      showToast('비교함에서 뺐어요');
+      showToast('비교함에서 뺐어요', prev ? { label: '되돌리기', onClick: () => addCompare(prev) } : undefined);
     },
   };
 }
@@ -62,7 +65,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="pr-16 text-[16px] font-bold leading-snug">
+          <h3 className="pr-20 text-[16px] font-bold leading-snug">
             <Link to={academyPath(refOf(academy, region), rep ? courseKey(rep) : null)} className="after:absolute after:inset-0 after:rounded-card hover:text-accent">
               {academy.name}
             </Link>
@@ -97,7 +100,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
             )}
           </div>
           {level && diffFromMedian !== null && market && (
-            <div className="flex flex-col items-end gap-0.5">
+            <div className="flex flex-col items-start gap-0.5 sm:items-end">
               <PriceLevelBadge level={level} diff={diffFromMedian} />
               <span className="text-[11px] text-ink-3">
                 {marketScopeName(market.row, mode)}{market.row.age ? ` ${AGE_LABELS[market.row.age]}` : ''} 중앙값 {manwon(market.row.median)}
@@ -111,13 +114,13 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
         </p>
       )}
 
-      <div className="absolute right-3 top-3 z-10 flex gap-1">
+      <div className="absolute right-1.5 top-1.5 z-10 flex">
         <button
           type="button"
           onClick={actions.onFavorite}
           aria-pressed={actions.fav}
           aria-label={actions.fav ? `${academy.name} 찜 해제` : `${academy.name} 찜하기`}
-          className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2"
+          className="rounded-xl p-2.5 text-ink-3 hover:bg-surface-2 active:bg-surface-2"
         >
           <Heart aria-hidden="true" className={`h-5 w-5 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
         </button>
@@ -126,7 +129,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
           onClick={() => (actions.comparing ? actions.removeCompare() : actions.onCompare(rep ? courseKey(rep) : null))}
           aria-pressed={actions.comparing}
           aria-label={actions.comparing ? `${academy.name} 비교함에서 빼기` : `${academy.name} 비교함에 담기`}
-          className={`rounded-lg p-1.5 hover:bg-surface-2 ${actions.comparing ? 'text-accent' : 'text-ink-3'}`}
+          className={`rounded-xl p-2.5 hover:bg-surface-2 active:bg-surface-2 ${actions.comparing ? 'text-accent' : 'text-ink-3'}`}
         >
           {actions.comparing ? <Check aria-hidden="true" className="h-5 w-5" /> : <Plus aria-hidden="true" className="h-5 w-5" />}
         </button>

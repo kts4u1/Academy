@@ -111,10 +111,13 @@ export function normalizeLegacyAddress(address: string): string {
   return address.replace(/^(광주광역시|전라남도)\s/, '전남광주통합특별시 ');
 }
 
+/** 원자료에 섞여 오는 깨진 글자(U+FFFD) 지우기 */
+const clean = (v: string | null | undefined) => (v ?? '').replace(/\uFFFD/g, '').trim();
+
 export function toNeisAcademy(row: NeisRawRow): NeisAcademy {
   return {
     id: `${row.ATPT_OFCDC_SC_CODE}-${row.ACA_ASNUM}`,
-    name: row.ACA_NM?.trim() ?? '',
+    name: clean(row.ACA_NM),
     kind: row.ACA_INSTI_SC_NM?.trim() ?? '',
     office: row.ATPT_OFCDC_SC_NM?.trim() ?? '',
     sigungu: row.ADMST_ZONE_NM?.trim() ?? '',
@@ -123,13 +126,13 @@ export function toNeisAcademy(row: NeisRawRow): NeisAcademy {
     course: [row.LE_CRSE_NM, row.LE_CRSE_LIST_NM].filter(Boolean).join(' · '),
     courseCategory: row.LE_CRSE_NM?.trim() ?? '',
     courseList: row.LE_CRSE_LIST_NM?.trim() ?? '',
-    tuitions: parseTuition(row.PSNBY_THCC_CNTNT),
+    tuitions: parseTuition(clean(row.PSNBY_THCC_CNTNT)),
     tuitionPublic: (row.THCC_OTHBC_YN ?? '').trim() === 'Y',
     capacity: row.TOFOR_SMTOT ?? row.DTM_RCPTN_ABLTY_NMPR_SMTOT ?? null,
     address: normalizeLegacyAddress(
-      [row.FA_RDNMA, row.FA_RDNDA].map((s) => (s ?? '').trim()).filter(Boolean).join(' ').replace(/\s+,/g, ',').replace(/^,\s*/, ''),
+      [row.FA_RDNMA, row.FA_RDNDA].map(clean).filter(Boolean).join(' ').replace(/\s+,/g, ',').replace(/^,\s*/, ''),
     ),
-    roadAddress: (row.FA_RDNMA ?? '').trim(),
+    roadAddress: clean(row.FA_RDNMA),
     phone: (row.FA_TELNO ?? '').trim(),
     establishedAt: ymd(row.ESTBL_YMD),
     status: (row.REG_STTUS_NM ?? '').trim(),

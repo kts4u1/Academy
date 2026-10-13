@@ -135,3 +135,22 @@ describe('NEIS 응답 처리', () => {
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toContain('pSize=5');
   });
 });
+
+describe('toNeisAcademy', () => {
+  it('원자료의 깨진 글자(U+FFFD)는 지운다', () => {
+    const row = toNeisAcademy({
+      ATPT_OFCDC_SC_CODE: 'B10',
+      ATPT_OFCDC_SC_NM: '서울특별시교육청',
+      ADMST_ZONE_NM: '동작구',
+      ACA_INSTI_SC_NM: '교습소',
+      ACA_ASNUM: '1',
+      ACA_NM: '유칼�투스영어교습소',
+      FA_RDNMA: '서울특별시 동작구 상도로 1',
+      FA_RDNDA: ', 2층 (상도동, 더�빌딩)',
+      PSNBY_THCC_CNTNT: '초등영어�:200000',
+    });
+    expect(row.name).toBe('유칼투스영어교습소');
+    expect(row.address).not.toContain('�');
+    expect(row.tuitions).toEqual([{ course: '초등영어', price: 200000 }]);
+  });
+});

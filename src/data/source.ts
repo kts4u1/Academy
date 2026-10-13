@@ -60,8 +60,12 @@ export function loadManifest(): Promise<DataManifest | null> {
   return manifestPromise;
 }
 
-/** 매주 내용이 바뀌는 파일이라 갱신 시각을 붙여 브라우저 캐시의 옛 파일을 쓰지 않게 한다 */
-const versioned = (m: DataManifest, file: string) => `${BASE}${file}?v=${encodeURIComponent(m.updatedAt)}`;
+/**
+ * 매주 내용이 바뀌는 파일이라 갱신 시각을 붙여 브라우저 캐시의 옛 파일을 쓰지 않게 한다.
+ * (단일 파일 데모는 파일을 함께 올리는 곳이 캐시를 맡으므로 붙이지 않는다)
+ */
+const SINGLE = typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__;
+const versioned = (m: DataManifest, file: string) => (SINGLE ? BASE + file : `${BASE}${file}?v=${encodeURIComponent(m.updatedAt)}`);
 
 const fileCache = new Map<string, Promise<RealAcademy[]>>();
 function loadFile(m: DataManifest, file: string): Promise<RealAcademy[]> {

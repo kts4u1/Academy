@@ -134,4 +134,9 @@ describe('비교 제외 항목', () => {
     expect(classifyCourse('초등A', 25000, ctx('과학교습소')).excluded).toBeTruthy();
     expect(classifyCourse('초등수학', 200000, ctx('수학교습소')).excluded).toBeUndefined();
   });
+
+  it('클리닉·보충 수업은 정규 월 교습비가 아니다', () => {
+    expect(classifyCourse('고등클리닉수학', 80000, ctx('수학교습소')).excluded).toBeTruthy();
+    expect(classifyCourse('중등 보충반', 60000, ctx('영어교습소')).excluded).toBeTruthy();
+  });
 });

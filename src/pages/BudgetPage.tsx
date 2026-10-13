@@ -1,90 +1,40 @@
 import { Plus, Trash } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { CostStack } from '../charts/CostStack';
-import { EmptyState, GroupDot, PageHeader, Section, SubjectTile, Toggle } from '../components/ui';
-import { getAcademy } from '../data';
-import { GROUPS, SUBJECT_MAP } from '../data/categories';
-import { useAcademies, useOrigin } from '../hooks';
-import { manwon, won } from '../lib/format';
-import { computeCost } from '../lib/pricing';
-import { EMPTY_FILTERS, searchAcademies } from '../lib/search';
+import { HBarList } from '../charts/HBarList';
+import { academyPath } from '../components/AcademyCard';
+import { RegionPicker } from '../components/RegionPicker';
+import { EmptyState, PageHeader, Section, SubjectChips } from '../components/ui';
+import { AGE_LABELS, AGE_ORDER, GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
+import { useAvailability, useDistricts, useMarket } from '../hooks';
+import { manwon, signedPercent, won } from '../lib/format';
+import { marketForCourse, marketScopeName } from '../lib/realSearch';
+import type { MarketRow } from '../lib/realData';
 import { useApp, type CalcItem } from '../store/AppContext';
-import type { CategoryGroup, DiscountType } from '../types';
+import type { AgeGroup } from '../types';
 
-const PEOPLE = ['첫째', '둘째', '셋째', '나'];
-
-interface ItemCost {
-  item: CalcItem;
-  title: string;
-  subtitle: string;
-  subjectId: string | null;
-  group: CategoryGroup | null;
-  monthlyTuition: number;
-  monthlyFees: number;
-  periodicAnnual: number;
-  oneTime: number;
-  effectiveMonthly: number;
-  annualTotal: number;
-  firstPayment: number;
+function itemMarket(rows: MarketRow[], item: CalcItem) {
+  if (!item.subjectId || !SUBJECT_MAP[item.subjectId]?.inNeis || !item.sido) return null;
+  return marketForCourse(rows, { sido: item.sido, sigungu: item.sigungu }, { subjectId: item.subjectId, ages: item.age ? [item.age] : [] });
 }
 
-function evaluate(item: CalcItem): ItemCost | null {
-  if (item.custom) {
-    const c = item.custom;
-    const annualTotal = (c.monthly + c.monthlyExtras) * 12 + c.oneTime;
-    return {
-      item,
-      title: c.name,
-      subtitle: '직접 입력',
-      subjectId: null,
-      group: null,
-      monthlyTuition: c.monthly,
-      monthlyFees: c.monthlyExtras,
-      periodicAnnual: 0,
-      oneTime: c.oneTime,
-      effectiveMonthly: annualTotal / 12,
-      annualTotal,
-      firstPayment: c.monthly + c.monthlyExtras + c.oneTime,
-    };
-  }
-  const academy = item.academyId ? getAcademy(item.academyId) : undefined;
-  const plan = academy?.plans.find((p) => p.id === item.planId) ?? academy?.plans[0];
-  if (!academy || !plan) return null;
-  const cost = computeCost(academy, plan, { includeOptional: item.includeOptional, discounts: item.discounts });
-  return {
-    item,
-    title: academy.name,
-    subtitle: plan.name,
-    subjectId: plan.subjectId,
-    group: SUBJECT_MAP[plan.subjectId]?.group ?? null,
-    monthlyTuition: cost.monthlyTuition,
-    monthlyFees: cost.monthlyFees,
-    periodicAnnual: cost.periodicAnnual,
-    oneTime: cost.oneTime,
-    effectiveMonthly: cost.effectiveMonthly,
-    annualTotal: cost.annualTotal,
-    firstPayment: cost.firstPayment,
-  };
-}
-
-function CustomForm({ onAdd }: { onAdd: (item: Omit<CalcItem, 'id'>) => void }) {
+function CustomForm({ onAdd, people }: { onAdd: (item: Omit<CalcItem, 'id'>) => void; people: string[] }) {
+  const { settings } = useApp();
   const [name, setName] = useState('');
-  const [person, setPerson] = useState('첫째');
+  const [person, setPerson] = useState(people[0] ?? '첫째');
   const [monthly, setMonthly] = useState('');
-  const [extras, setExtras] = useState('');
-  const [oneTime, setOneTime] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [age, setAge] = useState<AgeGroup | ''>('');
+  const [region, setRegion] = useState(settings.home ?? { sido: '서울', sigungu: '강남구' });
   const [error, setError] = useState('');
-  const n = (s: string) => Number(s.replace(/[^\d]/g, '')) || 0;
+  const amount = Math.round(Number(monthly.replace(/,/g, '')) * 10000);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || n(monthly) <= 0) return setError('이름과 월 수강료를 입력해 주세요.');
+    if (!name.trim() || !(amount > 0) || !person.trim()) return setError('이름, 누구, 월 금액을 입력해 주세요.');
     setError('');
-    onAdd({ person, custom: { name: name.trim(), monthly: n(monthly), monthlyExtras: n(extras), oneTime: n(oneTime) }, discounts: [], includeOptional: false });
+    onAdd({ person: person.trim(), name: name.trim(), monthly: amount, subjectId: subjectId || null, age: age || null, sido: region.sido, sigungu: region.sigungu });
     setName('');
     setMonthly('');
-    setExtras('');
-    setOneTime('');
   };
   return (
     <form onSubmit={submit} className="card grid gap-3 p-4" noValidate>
@@ -93,35 +43,59 @@ function CustomForm({ onAdd }: { onAdd: (item: Omit<CalcItem, 'id'>) => void }) 
           <label className="label" htmlFor="cf-name">
             학원·수업 이름
           </label>
-          <input id="cf-name" className="field" placeholder="예: 동네 미술학원" value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="cf-name" className="field" placeholder="예: 동네 수영장, 과외" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
           <label className="label" htmlFor="cf-person">
             누구
           </label>
           <input id="cf-person" className="field" list="people" value={person} onChange={(e) => setPerson(e.target.value)} />
+          <datalist id="people">
+            {people.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
           <label className="label" htmlFor="cf-monthly">
-            월 수강료(원)
+            월 금액(만원)
           </label>
-          <input id="cf-monthly" className="field num" inputMode="numeric" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+          <input id="cf-monthly" className="field num" inputMode="decimal" placeholder="예: 25" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </div>
         <div>
-          <label className="label" htmlFor="cf-extras">
-            월 부대비용
+          <label className="label" htmlFor="cf-subject">
+            과목
           </label>
-          <input id="cf-extras" className="field num" inputMode="numeric" value={extras} onChange={(e) => setExtras(e.target.value)} />
+          <select id="cf-subject" className="field" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+            <option value="">선택 안 함</option>
+            {GROUPS.map((g) => (
+              <optgroup key={g.id} label={g.name}>
+                {subjectsOf(g.id).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
         <div>
-          <label className="label" htmlFor="cf-once">
-            초기 비용
+          <label className="label" htmlFor="cf-age">
+            대상
           </label>
-          <input id="cf-once" className="field num" inputMode="numeric" value={oneTime} onChange={(e) => setOneTime(e.target.value)} />
+          <select id="cf-age" className="field" value={age} onChange={(e) => setAge(e.target.value as AgeGroup | '')}>
+            <option value="">선택 안 함</option>
+            {AGE_ORDER.map((a) => (
+              <option key={a} value={a}>
+                {AGE_LABELS[a]}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+      <RegionPicker idPrefix="cf" sido={region.sido} sigungu={region.sigungu} allowAll={false} onChange={(sido, sigungu) => setRegion({ sido, sigungu })} />
       {error && (
         <p role="alert" className="text-[13px] font-semibold text-pricey">
           {error}
@@ -135,222 +109,112 @@ function CustomForm({ onAdd }: { onAdd: (item: Omit<CalcItem, 'id'>) => void }) 
 }
 
 export function BudgetPage() {
-  const academies = useAcademies();
-  const origin = useOrigin();
-  const { calc, addCalc, updateCalc, removeCalc, settings, showToast } = useApp();
-  const evaluated = useMemo(() => calc.map(evaluate).filter((x): x is ItemCost => x !== null), [calc]);
-
-  const loadExample = () => {
-    const home = settings.home;
-    const pick = (subjectId: string, age: 'preschool' | 'elementary') =>
-      searchAcademies(
-        academies,
-        { ...EMPTY_FILTERS, subjectIds: [subjectId], ages: [age], sido: home?.sido ?? '서울', sigungu: home?.sigungu ?? '' },
-        origin ? 'distance' : 'price_asc',
-        'effectiveMonthly',
-        { origin, withPeers: false },
-      )[0];
-    const examples: [string, string, 'preschool' | 'elementary'][] = [
-      ['첫째', 'math', 'elementary'],
-      ['첫째', 'english', 'elementary'],
-      ['첫째', 'swim', 'elementary'],
-      ['둘째', 'taekwondo', 'preschool'],
-      ['둘째', 'piano', 'elementary'],
-    ];
-    for (const [person, subjectId, age] of examples) {
-      const r = pick(subjectId, age);
-      if (r) addCalc({ person, academyId: r.academy.id, planId: r.plan.id, discounts: [], includeOptional: false });
-    }
-    showToast('예시 학원 5곳을 담았어요. 자유롭게 바꿔 보세요');
-  };
-
-  const totals = evaluated.reduce(
-    (t, e) => ({
-      monthlyFixed: t.monthlyFixed + e.monthlyTuition + e.monthlyFees,
-      effective: t.effective + e.effectiveMonthly,
-      annual: t.annual + e.annualTotal,
-      first: t.first + e.firstPayment,
-    }),
-    { monthlyFixed: 0, effective: 0, annual: 0, first: 0 },
-  );
-  const people = Array.from(new Set(evaluated.map((e) => e.item.person)));
-  const byGroup = GROUPS.map((g) => ({ ...g, total: evaluated.filter((e) => e.group === g.id).reduce((s, e) => s + e.effectiveMonthly, 0) })).filter((g) => g.total > 0);
-  const customTotal = evaluated.filter((e) => e.group === null).reduce((s, e) => s + e.effectiveMonthly, 0);
+  const { calc, addCalc, updateCalc, removeCalc } = useApp();
+  const availability = useAvailability();
+  // 정적 데이터면 시세 파일만 쓰고, 브라우저에서 받는 경우에만 항목 지역 데이터를 받는다
+  const { states } = useDistricts(availability.mode === 'live' ? calc.filter((c) => c.sido && c.subjectId).map((c) => ({ sido: c.sido, sigungu: c.sigungu })) : []);
+  const market = useMarket(Array.from(states.values()).map((s) => s.data));
+  const people = Array.from(new Set(calc.map((c) => c.person)));
+  const total = calc.reduce((s, c) => s + c.monthly, 0);
+  const byPerson = people.map((p) => ({ person: p, total: calc.filter((c) => c.person === p).reduce((s, c) => s + c.monthly, 0) }));
+  const compared = calc.map((c) => ({ item: c, match: itemMarket(market.rows, c) }));
+  const overMedian = compared.reduce((s, { item, match }) => s + (match ? item.monthly - match.row.median : 0), 0);
+  const comparedCount = compared.filter((c) => c.match).length;
 
   return (
     <div>
-      <PageHeader title="내 학원비" subtitle="다니는(다닐) 학원을 담아 한 달·1년 지출을 계산해요" />
-      <datalist id="people">
-        {PEOPLE.map((p) => (
-          <option key={p} value={p} />
-        ))}
-      </datalist>
+      <PageHeader title="내 학원비" subtitle="다니는 학원비를 모아 보고 우리 동네 신고 교습비 시세와 비교해요" />
 
-      {evaluated.length === 0 ? (
-        <EmptyState
-          title="담은 학원이 없어요"
-          desc="학원 상세 화면에서 '계산기 담기'를 누르거나 아래에서 직접 입력하세요. 아이별로 나눠서 합계를 보여드려요."
-          action={
-            <button type="button" className="btn-primary" onClick={loadExample}>
-              예시로 채워 보기
-            </button>
-          }
-        />
+      {calc.length === 0 ? (
+        <EmptyState title="아직 추가한 학원비가 없어요" desc="학원 상세 화면의 ‘내 학원비에 추가’를 누르거나, 아래에서 직접 입력하세요. 체육시설·과외처럼 교육청 자료에 없는 곳도 넣을 수 있어요." />
       ) : (
         <>
-          <section className="card p-4" aria-label="합계">
-            <p className="text-[12px] font-semibold text-ink-3">실질 월 부담 합계</p>
-            <p className="text-[34px] font-bold leading-tight tracking-tight">{won(totals.effective)}</p>
-            <dl className="num mt-3 grid grid-cols-3 gap-3 border-t border-line pt-3 text-[13px]">
-              <div>
-                <dt className="text-ink-3">매달 나가는 돈</dt>
-                <dd className="font-bold">{manwon(totals.monthlyFixed)}</dd>
-              </div>
-              <div>
-                <dt className="text-ink-3">첫 달 결제</dt>
-                <dd className="font-bold">{manwon(totals.first)}</dd>
-              </div>
-              <div>
-                <dt className="text-ink-3">1년 총비용</dt>
-                <dd className="font-bold">{manwon(totals.annual)}</dd>
-              </div>
-            </dl>
-            {(byGroup.length > 0 || customTotal > 0) && (
-              <div className="mt-4">
-                <div className="flex h-3 gap-[2px] overflow-hidden rounded-full">
-                  {byGroup.map((g) => (
-                    <div
-                      key={g.id}
-                      title={`${g.name} ${won(g.total)}`}
-                      className={{ academic: 'bg-academic', sports: 'bg-sports', arts: 'bg-arts' }[g.id]}
-                      style={{ flexGrow: g.total, flexBasis: 0 }}
-                    />
-                  ))}
-                  {customTotal > 0 && <div title={`직접 입력 ${won(customTotal)}`} className="bg-ink-3" style={{ flexGrow: customTotal, flexBasis: 0 }} />}
-                </div>
-                <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
-                  {byGroup.map((g) => (
-                    <li key={g.id} className="flex items-center gap-1.5">
-                      <GroupDot group={g.id} /> {g.name} <b className="num text-ink">{manwon(g.total)}</b>
-                      <span className="text-ink-3">({Math.round((g.total / totals.effective) * 100)}%)</span>
-                    </li>
-                  ))}
-                  {customTotal > 0 && (
-                    <li className="flex items-center gap-1.5">
-                      <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-ink-3" /> 직접 입력 <b className="num text-ink">{manwon(customTotal)}</b>
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-          </section>
+          <div className="card grid gap-4 p-4 sm:grid-cols-3">
+            <div>
+              <p className="text-[13px] text-ink-2">한 달 합계</p>
+              <p className="num text-[26px] font-bold">{manwon(total)}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-ink-2">1년이면</p>
+              <p className="num text-[26px] font-bold">{manwon(total * 12)}</p>
+            </div>
+            <div>
+              <p className="text-[13px] text-ink-2">시세 중앙값과 비교 ({comparedCount}개 항목)</p>
+              <p className={`num text-[26px] font-bold ${overMedian > 0 ? 'text-pricey' : overMedian < 0 ? 'text-cheap' : ''}`}>
+                {comparedCount === 0 ? '-' : `${overMedian >= 0 ? '+' : '-'}${manwon(Math.abs(overMedian))}`}
+              </p>
+              {comparedCount > 0 && <p className="text-[12px] text-ink-3">월 기준 · {overMedian > 0 ? '시세보다 더 내고 있어요' : overMedian < 0 ? '시세보다 덜 내고 있어요' : '시세와 같아요'}</p>}
+            </div>
+          </div>
 
           {people.length > 1 && (
-            <Section title="사람별 1년 비용" desc="수강료와 부대비용 구성">
+            <Section title="사람별 한 달 합계">
               <div className="card p-4">
-                <CostStack
-                  format={manwon}
-                  segmentLabels={['수강료', '매월 부대비용', '정기 비용', '초기 비용']}
-                  rows={people.map((person) => {
-                    const items = evaluated.filter((e) => e.item.person === person);
-                    const sum = (f: (e: ItemCost) => number) => items.reduce((s, e) => s + f(e), 0);
-                    const fees = sum((e) => e.monthlyFees * 12);
-                    const periodic = sum((e) => e.periodicAnnual);
-                    const once = sum((e) => e.oneTime);
-                    return { key: person, label: `${person} (${items.length}곳)`, segments: [sum((e) => e.annualTotal) - fees - periodic - once, fees, periodic, once] };
-                  })}
-                />
+                <HBarList format={manwon} items={byPerson.map((p) => ({ key: p.person, label: p.person, value: p.total }))} />
               </div>
             </Section>
           )}
 
           {people.map((person) => (
-            <Section key={person} title={person} desc={`월 ${manwon(evaluated.filter((e) => e.item.person === person).reduce((s, e) => s + e.effectiveMonthly, 0))} (실질)`}>
+            <Section key={person} title={person} desc={`월 ${won(byPerson.find((p) => p.person === person)!.total)}`}>
               <ul className="flex flex-col gap-2">
-                {evaluated
-                  .filter((e) => e.item.person === person)
-                  .map((e) => {
-                    const academy = e.item.academyId ? getAcademy(e.item.academyId) : undefined;
+                {compared
+                  .filter(({ item }) => item.person === person)
+                  .map(({ item, match }) => {
+                    const diff = match ? item.monthly / match.row.median - 1 : null;
                     return (
-                      <li key={e.item.id} className="card p-4">
-                        <div className="flex items-start gap-3">
-                          {e.subjectId ? <SubjectTile subjectId={e.subjectId} size="sm" /> : <span className="h-8 w-8 shrink-0 rounded-lg bg-surface-2" aria-hidden="true" />}
-                          <div className="min-w-0 flex-1">
-                            {academy ? (
-                              <Link to={`/academy/${academy.id}?plan=${e.item.planId}`} className="block truncate text-[15px] font-bold hover:text-accent">
-                                {e.title}
+                      <li key={item.id} className="card flex flex-col gap-2 p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            {item.ref ? (
+                              <Link to={academyPath(item.ref, item.course)} className="text-[15px] font-semibold hover:text-accent">
+                                {item.name}
                               </Link>
                             ) : (
-                              <p className="truncate text-[15px] font-bold">{e.title}</p>
+                              <p className="text-[15px] font-semibold">{item.name}</p>
                             )}
-                            <p className="truncate text-[12px] text-ink-3">{e.subtitle}</p>
-                          </div>
-                          <div className="num shrink-0 text-right">
-                            <p className="text-[16px] font-bold">{manwon(e.effectiveMonthly)}</p>
-                            <p className="text-[11px] text-ink-3">실질 월</p>
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {academy && (
-                            <div className="col-span-2 sm:col-span-1">
-                              <label className="label" htmlFor={`plan-${e.item.id}`}>
-                                요금제
-                              </label>
-                              <select id={`plan-${e.item.id}`} className="field py-2 text-[13px]" value={e.item.planId} onChange={(ev) => updateCalc(e.item.id, { planId: ev.target.value })}>
-                                {academy.plans.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name}
-                                  </option>
-                                ))}
-                              </select>
+                            <div className="mt-1 flex flex-wrap items-center gap-1 text-[12px] text-ink-3">
+                              {item.subjectId && <SubjectChips subjectIds={[item.subjectId]} />}
+                              {item.age && <span>{AGE_LABELS[item.age]}</span>}
+                              {item.sigungu && <span>· {item.sigungu}</span>}
+                              {item.reportedPrice && <span>· 교육청 신고 {manwon(item.reportedPrice)}</span>}
                             </div>
-                          )}
-                          <div>
-                            <label className="label" htmlFor={`person-${e.item.id}`}>
-                              누구
-                            </label>
-                            <input id={`person-${e.item.id}`} className="field py-2 text-[13px]" list="people" value={e.item.person} onChange={(ev) => updateCalc(e.item.id, { person: ev.target.value || '첫째' })} />
                           </div>
-                          <div className="flex items-end justify-end">
-                            <button type="button" className="btn-ghost px-3 py-2 text-[13px]" onClick={() => removeCalc(e.item.id)}>
-                              <Trash aria-hidden="true" className="h-4 w-4" /> 삭제
-                            </button>
-                          </div>
+                          <button type="button" onClick={() => removeCalc(item.id)} className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2" aria-label={`${item.name} 삭제`}>
+                            <Trash aria-hidden="true" className="h-4 w-4" />
+                          </button>
                         </div>
-                        {academy && (academy.discounts.length > 0 || academy.extraFees.some((f) => !f.required)) && (
-                          <div className="mt-2 border-t border-line pt-1">
-                            {academy.extraFees.some((f) => !f.required) && (
-                              <Toggle id={`opt-${e.item.id}`} label="선택 비용 포함" checked={e.item.includeOptional} onChange={(v) => updateCalc(e.item.id, { includeOptional: v })} />
+                        <div className="flex flex-wrap items-end justify-between gap-2">
+                          <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                            월
+                            <input
+                              className="field num w-24 py-1.5"
+                              inputMode="decimal"
+                              aria-label={`${item.name} 월 금액(만원)`}
+                              defaultValue={String(item.monthly / 10000)}
+                              onBlur={(e) => {
+                                const v = Math.round(Number(e.target.value) * 10000);
+                                if (v > 0) updateCalc(item.id, { monthly: v });
+                                else e.target.value = String(item.monthly / 10000);
+                              }}
+                            />
+                            만원
+                          </label>
+                          <p className="text-right text-[12px] text-ink-3">
+                            {match && diff !== null ? (
+                              <>
+                                {marketScopeName(match.row, market.mode ?? 'static', item)} {match.row.age ? AGE_LABELS[match.row.age] : ''} 중앙값 {manwon(match.row.median)} 대비{' '}
+                                <b className={diff > 0.005 ? 'text-pricey' : diff < -0.005 ? 'text-cheap' : 'text-ink'}>{signedPercent(diff)}</b>
+                              </>
+                            ) : item.subjectId && !SUBJECT_MAP[item.subjectId]?.inNeis ? (
+                              '체육시설은 교육청 자료가 없어 시세 비교를 못 해요'
+                            ) : item.subjectId ? (
+                              '이 지역·과목은 시세를 낼 만큼 자료가 없어요'
+                            ) : (
+                              '과목을 정하지 않아 시세 비교 없음'
                             )}
-                            {academy.discounts.map((d) => (
-                              <Toggle
-                                key={d.id}
-                                id={`d-${e.item.id}-${d.id}`}
-                                label={d.label}
-                                checked={e.item.discounts.includes(d.type)}
-                                onChange={(v) =>
-                                  updateCalc(e.item.id, {
-                                    discounts: v ? [...e.item.discounts, d.type] : e.item.discounts.filter((x: DiscountType) => x !== d.type),
-                                  })
-                                }
-                              />
-                            ))}
-                          </div>
-                        )}
-                        <dl className="num mt-2 grid grid-cols-3 gap-2 rounded-lg bg-surface-2 p-2 text-[12px]">
-                          <div>
-                            <dt className="text-ink-3">월 수강료</dt>
-                            <dd className="font-semibold">{won(e.monthlyTuition)}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-ink-3">첫 결제</dt>
-                            <dd className="font-semibold">{won(e.firstPayment)}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-ink-3">1년</dt>
-                            <dd className="font-semibold">{won(e.annualTotal)}</dd>
-                          </div>
-                        </dl>
+                          </p>
+                        </div>
                       </li>
                     );
                   })}
@@ -360,14 +224,11 @@ export function BudgetPage() {
         </>
       )}
 
-      <Section title="직접 입력" desc="앱에 없는 학원이나 과외도 함께 계산할 수 있어요">
-        <CustomForm
-          onAdd={(item) => {
-            addCalc(item);
-            showToast('추가했어요');
-          }}
-        />
+      <Section title="직접 입력" desc="교육청 자료에 없는 체육시설·과외나 교습비가 공개되지 않은 학원도 함께 관리할 수 있어요">
+        <CustomForm onAdd={addCalc} people={people} />
       </Section>
+
+      <p className="mt-6 text-[12px] text-ink-3">입력한 내용은 이 브라우저에만 저장돼요.</p>
     </div>
   );
 }

@@ -18,3 +18,11 @@ export function save<T>(key: string, value: T): void {
     // 저장 실패는 무시 (이번 세션 동안만 유지)
   }
 }
+
+export function remove(key: string): void {
+  try {
+    window.localStorage.removeItem(PREFIX + key);
+  } catch {
+    // 무시
+  }
+}

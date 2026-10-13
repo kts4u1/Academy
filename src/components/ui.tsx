@@ -1,10 +1,10 @@
-import { ChevronLeft, Star, X } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SUBJECT_MAP } from '../data/categories';
-import { PRICE_LEVEL_META, type PriceLevel } from '../lib/pricing';
+import { PRICE_LEVEL_META, type PriceLevel } from '../lib/realData';
 import { signedPercent } from '../lib/format';
-import type { CategoryGroup, PriceSource } from '../types';
+import type { CategoryGroup } from '../types';
 
 const GROUP_TILE: Record<CategoryGroup, string> = {
   academic: 'bg-academic-soft text-academic',
@@ -62,33 +62,10 @@ export function PriceLevelBadge({ level, diff, compact = false }: { level: Price
   );
 }
 
-const SOURCE_META: Record<PriceSource, { label: string; className: string; title: string }> = {
-  education_office: {
-    label: '교육청 신고가',
-    className: 'text-accent bg-accent-soft',
-    title: '학원이 교육청에 신고한 교습비 기준',
-  },
-  academy: { label: '학원 제공', className: 'text-ink-2 bg-surface-2', title: '학원이 직접 등록한 가격' },
-  user_report: { label: '이용자 제보', className: 'text-ink-2 bg-surface-2', title: '이용자가 제보한 가격' },
-};
-
-export function SourceBadge({ source }: { source: PriceSource }) {
-  const meta = SOURCE_META[source];
-  return (
-    <span title={meta.title} className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${meta.className}`}>
-      {meta.label}
-    </span>
-  );
-}
-
-export function Stars({ value, count }: { value: number; count?: number }) {
-  return (
-    <span className="inline-flex items-center gap-0.5 text-[13px] text-ink-2">
-      <Star aria-hidden="true" className="h-3.5 w-3.5 fill-tag text-tag" />
-      <span className="font-semibold text-ink">{value.toFixed(1)}</span>
-      {count !== undefined && <span className="text-ink-3">({count.toLocaleString()})</span>}
-    </span>
-  );
+/** 학원 · 교습소 구분 */
+export function KindBadge({ kind }: { kind: string }) {
+  if (!kind) return null;
+  return <span className="inline-flex items-center rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">{kind}</span>;
 }
 
 export function PageHeader({ title, subtitle, back = false, action }: { title: string; subtitle?: string; back?: boolean; action?: ReactNode }) {

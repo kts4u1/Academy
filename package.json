@@ -12,7 +12,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "neis:compare": "tsx scripts/neis-compare.ts"
+    "data:update": "tsx scripts/update-data.ts"
   },
   "dependencies": {
     "lucide-react": "^1.55.0",

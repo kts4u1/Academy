@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FILTERS, searchAcademies } from '../lib/search';
-import { getAcademies } from './index';
-import { academyCount } from './generator';
-import { DISTRICTS, districtsOf, EDU_OFFICES, findDistrict, neisZoneNames, SIDOS } from './regions';
+import { bucketsFor, DISTRICTS, districtsOf, EDU_OFFICES, filterNeisForDistrict, findDistrict, neisZoneNames, resolveNeisDistrict, SIDOS } from './regions';
 
 describe('전국 지역 목록', () => {
   it('17개 시·도와 256개 시·군·구(일반구 포함)', () => {
@@ -28,13 +25,13 @@ describe('전국 지역 목록', () => {
     expect(findDistrict('경기', '화성시 동탄구')).toBeDefined();
   });
 
-  it('좌표는 대한민국 범위 안, 동 이름은 2개 이상', () => {
+  it('좌표는 대한민국 범위 안, 동 이름이 있다', () => {
     for (const d of DISTRICTS) {
       expect(d.lat, d.sigungu).toBeGreaterThan(33);
       expect(d.lat, d.sigungu).toBeLessThan(38.7);
       expect(d.lng, d.sigungu).toBeGreaterThan(124.5);
       expect(d.lng, d.sigungu).toBeLessThan(131);
-      expect(d.dongs.length, d.sigungu).toBeGreaterThanOrEqual(2);
+      expect(d.dongs.length, d.sigungu).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -48,37 +45,50 @@ describe('전국 지역 목록', () => {
   });
 });
 
-describe('통합 시·도 이름 검색', () => {
-  const academies = getAcademies();
-  const sidosOf = (q: string) => new Set(searchAcademies(academies, { ...EMPTY_FILTERS, q }, 'price_asc', 'monthlyTuition', { withPeers: false }).map((r) => r.academy.region.sido));
+const row = (sigungu: string, address: string, roadAddress = address.replace(/,.*$/, '')) => ({ sigungu, address, roadAddress });
 
-  it("'광주'에는 전남이, '전남'에는 광주가 섞이지 않는다", () => {
-    expect(sidosOf('광주')).toEqual(new Set(['광주', '경기'])); // 경기 광주시 포함
-    expect(sidosOf('전남')).toEqual(new Set(['전남']));
-    expect(sidosOf('광주특별시')).toEqual(new Set(['광주']));
-    expect(sidosOf('전라남도')).toEqual(new Set(['전남']));
+describe('교육청 자료 → 앱 시·군·구 배정', () => {
+  it('자치구·시·군은 이름 그대로', () => {
+    expect(resolveNeisDistrict('서울', row('강남구', '서울특별시 강남구 선릉로 38, 4층 (개포동)'))).toEqual({ sigungu: '강남구' });
+    expect(resolveNeisDistrict('광주', row('광산구', '광주광역시 광산구 수완로 1 (수완동)'))).toEqual({ sigungu: '광산구' });
+    expect(resolveNeisDistrict('세종', row('세종특별자치시', '세종특별자치시 한누리대로 1 (나성동)'))).toEqual({ sigungu: '세종시' });
   });
 
-  it("'전남광주통합특별시'는 광주와 전남 모두", () => {
-    expect(sidosOf('전남광주통합특별시')).toEqual(new Set(['광주', '전남']));
-    expect(sidosOf('전남광주 수학')).toEqual(new Set(['광주', '전남']));
-  });
-});
-
-describe('지역별 예시 데이터', () => {
-  const academies = getAcademies();
-
-  it('모든 시·군·구에 학원이 있다', () => {
-    const counts = new Map<string, number>();
-    for (const a of academies) counts.set(`${a.region.sido} ${a.region.sigungu}`, (counts.get(`${a.region.sido} ${a.region.sigungu}`) ?? 0) + 1);
-    for (const d of DISTRICTS) expect(counts.get(`${d.sido} ${d.sigungu}`), d.sigungu).toBe(academyCount(d));
+  it('일반구가 있는 시는 도로명의 구 → 동 이름으로 구를 찾고, 못 찾으면 시 이름 버킷', () => {
+    expect(resolveNeisDistrict('경기', row('성남시', '경기도 성남시 분당구 황새울로 1, 2층 (서현동)'))).toEqual({ sigungu: '성남시 분당구' });
+    expect(resolveNeisDistrict('경기', row('성남시', '경기도 성남시 황새울로 1, 2층 (서현동)'))).toEqual({ sigungu: '성남시 분당구' });
+    expect(resolveNeisDistrict('경기', row('성남시', '경기도 성남시 어딘가로 1'))).toEqual({ bucket: '성남시' });
   });
 
-  it('광주 광산구·서구 검색', () => {
-    for (const sigungu of ['광산구', '서구']) {
-      const results = searchAcademies(academies, { ...EMPTY_FILTERS, sido: '광주', sigungu }, 'price_asc', 'monthlyTuition', { withPeers: false });
-      expect(results.length, sigungu).toBeGreaterThan(0);
-      expect(results.every((r) => r.academy.region.sigungu === sigungu)).toBe(true);
-    }
+  it('청주는 교육청 자료가 구 단위', () => {
+    expect(resolveNeisDistrict('충북', row('흥덕구', '충청북도 청주시 흥덕구 대농로 1 (복대동)'))).toEqual({ sigungu: '청주시 흥덕구' });
+  });
+
+  it('인천 옛 중구·서구는 주소로 새 구에 나눈다', () => {
+    expect(resolveNeisDistrict('인천', row('중구', '인천광역시 중구 하늘중앙로 1 (운서동)'))).toEqual({ sigungu: '영종구' });
+    expect(resolveNeisDistrict('인천', row('중구', '인천광역시 중구 신포로 1 (신포동)'))).toEqual({ sigungu: '제물포구' });
+    expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 완정로 1 (마전동)'))).toEqual({ sigungu: '검단구' });
+    expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 서곶로 1 (심곡동)'))).toEqual({ sigungu: '서해구' });
+    expect(resolveNeisDistrict('인천', row('서구', '인천광역시 서구 서곶로 1'))).toEqual({ bucket: '인천 옛 서구' });
+  });
+
+  it('구 미상 버킷은 같은 시의 각 구에서 함께 보인다', () => {
+    expect(bucketsFor({ sido: '경기', sigungu: '성남시 수정구' })).toEqual(['성남시']);
+    expect(bucketsFor({ sido: '인천', sigungu: '검단구' })).toEqual(['인천 옛 서구']);
+    expect(bucketsFor({ sido: '서울', sigungu: '강남구' })).toEqual([]);
+  });
+
+  it('한 지역만 받을 때도 정적 데이터와 같은 규칙으로 거른다', () => {
+    const rows = [
+      row('성남시', '경기도 성남시 분당구 황새울로 1 (서현동)'),
+      row('성남시', '경기도 성남시 수정구 수정로 1 (태평동)'),
+      row('성남시', '경기도 성남시 어딘가로 1'),
+    ];
+    const r = filterNeisForDistrict(rows, { sido: '경기', sigungu: '성남시 분당구' });
+    expect(r.rows).toEqual([rows[0], rows[2]]);
+    expect(r.unassigned).toBe(1);
+    expect(r.cityWide).toBe(false);
+    const mostlyUnknown = filterNeisForDistrict([rows[0], rows[2], rows[2]], { sido: '경기', sigungu: '성남시 분당구' });
+    expect(mostlyUnknown.cityWide).toBe(true);
   });
 });

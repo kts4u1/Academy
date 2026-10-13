@@ -1,4 +1,4 @@
-import { HashRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { AcademyPage } from './pages/AcademyPage';
 import { BudgetPage } from './pages/BudgetPage';
@@ -7,7 +7,6 @@ import { DataInfoPage } from './pages/DataInfoPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { HomePage } from './pages/HomePage';
 import { MarketPage } from './pages/MarketPage';
-import { NeisPage } from './pages/NeisPage';
 import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AppProvider } from './store/AppContext';
@@ -18,13 +17,13 @@ function AppRoutes() {
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="search" element={<SearchPage />} />
-        <Route path="academy/:id" element={<AcademyPage />} />
+        <Route path="academy/:sido/:sigungu/:id" element={<AcademyPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="market" element={<MarketPage />} />
         <Route path="budget" element={<BudgetPage />} />
         <Route path="favorites" element={<FavoritesPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="neis" element={<NeisPage />} />
+        <Route path="neis" element={<Navigate to="/data" replace />} />
         <Route path="data" element={<DataInfoPage />} />
         <Route path="*" element={<HomePage />} />
       </Route>

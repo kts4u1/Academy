@@ -1,7 +1,8 @@
 import { ChartColumn, Heart, House, MapPin, Scale, Search, Settings, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useAvailability } from '../hooks';
+import { kstDate } from '../lib/format';
 import { useApp } from '../store/AppContext';
 import { RegionPicker } from './RegionPicker';
 import { Sheet } from './ui';
@@ -56,14 +57,14 @@ function LocationChip() {
             onClick={() => {
               updateSettings({ home: draft });
               setOpen(false);
-              showToast(`${draft.sido} ${draft.sigungu} 기준으로 거리와 시세를 보여드려요`);
+              showToast(`${draft.sido} ${draft.sigungu} 기준으로 학원과 시세를 보여드려요`);
             }}
           >
             이 동네로 설정
           </button>
         }
       >
-        <p className="mb-4 text-sm text-ink-2">거리순 정렬과 홈 화면의 우리 동네 시세에 사용합니다.</p>
+        <p className="mb-4 text-sm text-ink-2">검색할 때 처음 보여 줄 지역과 홈 화면의 우리 동네 시세에 사용합니다.</p>
         <RegionPicker idPrefix="home" sido={draft.sido} sigungu={draft.sigungu} allowAll={false} onChange={(sido, sigungu) => setDraft({ sido, sigungu })} />
       </Sheet>
     </>
@@ -144,18 +145,33 @@ function BottomNav() {
   );
 }
 
-function SampleBanner() {
+function DataStatusBanner() {
+  const { loading, mode, manifest } = useAvailability();
+  if (loading) return null;
+  const link = (to: string, label: string) => (
+    <Link to={to} className="font-semibold text-accent underline-offset-2 hover:underline">
+      {label}
+    </Link>
+  );
   return (
     <div className="border-b border-line bg-surface-2">
       <p className="mx-auto max-w-app px-4 py-1.5 text-[12px] text-ink-2">
-        <b className="font-semibold text-ink">데모 데이터</b> · 학원명·주소·가격·후기는 예시예요.{' '}
-        <Link to="/data" className="font-semibold text-accent underline-offset-2 hover:underline">
-          무엇이 실제인지 보기
-        </Link>
-        {' · '}
-        <Link to="/neis" className="font-semibold text-accent underline-offset-2 hover:underline">
-          교육청 실데이터 조회 →
-        </Link>
+        {mode === 'static' && manifest && (
+          <>
+            <b className="font-semibold text-ink">교육청 학원교습소정보</b> · {kstDate(manifest.updatedAt)} 업데이트 (매주 자동)
+            {manifest.sampleMode && <b className="ml-1 font-semibold text-pricey">· 표본(일부 학원만)</b>} · {link('/data', '데이터 안내')}
+          </>
+        )}
+        {mode === 'live' && (
+          <>
+            <b className="font-semibold text-ink">내 인증키로 교육청 자료 직접 받기</b> · 지역별로 7일 보관 후 다시 받아요 · {link('/data', '데이터 안내')}
+          </>
+        )}
+        {mode === 'none' && (
+          <>
+            <b className="font-semibold text-ink">아직 교육청 데이터가 없어요</b> · {link('/settings#neis-key', '인증키 넣기')} · {link('/data', '자동 업데이트 설정 방법')}
+          </>
+        )}
       </p>
     </div>
   );
@@ -184,7 +200,7 @@ export function Layout() {
     <div className="min-h-full">
       <ScrollToTop />
       <Header />
-      <SampleBanner />
+      <DataStatusBanner />
       <main className="mx-auto max-w-app px-4 pb-28 pt-3 md:pb-16">
         <Outlet />
       </main>

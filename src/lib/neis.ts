@@ -224,15 +224,16 @@ export const NEIS_MAX_PAGE_SIZE = 1000;
  */
 export async function fetchAllNeisAcademies(
   q: Omit<NeisQuery, 'page' | 'pageSize'>,
-  options: { maxRows?: number; onProgress?: (loaded: number, total: number) => void; fetchImpl?: typeof fetch; retryDelays?: number[] } = {},
+  options: { maxRows?: number; onProgress?: (loaded: number, total: number) => void; fetchImpl?: typeof fetch; retryDelays?: number[]; pageDelayMs?: number } = {},
 ): Promise<NeisResult & { truncated: boolean }> {
-  const { maxRows = 6000, onProgress, fetchImpl = fetch, retryDelays } = options;
+  const { maxRows = 6000, onProgress, fetchImpl = fetch, retryDelays, pageDelayMs = 0 } = options;
   const first = await fetchNeisAcademies({ ...q, page: 1, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
   const rows = [...first.rows];
   onProgress?.(rows.length, first.total);
   if (first.sampleMode) return { ...first, truncated: first.total > rows.length };
   const limit = Math.min(first.total, maxRows);
   for (let page = 2; rows.length < limit; page++) {
+    if (pageDelayMs) await new Promise((r) => setTimeout(r, pageDelayMs));
     const next = await fetchNeisAcademies({ ...q, page, pageSize: NEIS_MAX_PAGE_SIZE }, fetchImpl, retryDelays);
     if (next.rows.length === 0) break;
     rows.push(...next.rows);

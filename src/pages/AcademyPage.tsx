@@ -1,441 +1,323 @@
-import { Bus, Car, Check, Clock, Heart, MapPin, Phone, Plus, Users, Wallet } from 'lucide-react';
+import { Check, ExternalLink, Heart, MapPin, Phone, Plus, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { PriceHistoryChart } from '../charts/PriceHistoryChart';
+import { Histogram } from '../charts/Histogram';
 import { RangeStrip } from '../charts/RangeStrip';
-import { MetricPicker } from '../components/MetricPicker';
-import { PriceReportForm } from '../components/PriceReportForm';
-import { BackButton, EmptyState, PriceLevelBadge, Section, SourceBadge, Stars, SubjectChips, SubjectTile, Toggle } from '../components/ui';
-import { getAcademy } from '../data';
-import { AGE_LABELS, CLASS_TYPE_LABELS, SUBJECT_MAP } from '../data/categories';
-import { useAcademies } from '../hooks';
-import { dotDate, formatMetric, hoursLabel, manwon, signedPercent, unitPrice, won } from '../lib/format';
-import { cheaperAlternatives, comparePlanToPeers } from '../lib/market';
-import { annualRecurring, billingLabel, computeCost, METRIC_MAP, PRICE_LEVEL_META, scheduleLabel, planUnits } from '../lib/pricing';
+import { academyPath, refOf, useAcademyActions } from '../components/AcademyCard';
+import { DataStamp, DistrictGate } from '../components/DataState';
+import { BackButton, EmptyState, KindBadge, PriceLevelBadge, Section, Sheet, SubjectChips, SubjectTile } from '../components/ui';
+import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
+import type { DataMode, DistrictData } from '../data/source';
+import { useDistrictData, useMarket } from '../hooks';
+import { dotDate, manwon, shortMan, signedPercent, unitPrice } from '../lib/format';
+import { academyPrices, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
+import { cheaperAlternatives, marketForCourse, marketScopeName } from '../lib/realSearch';
 import { useApp } from '../store/AppContext';
-import type { DiscountType, ExtraFee } from '../types';
 
-export function frequencyLabel(fee: ExtraFee): string {
-  switch (fee.frequency) {
-    case 'once':
-      return '최초 1회';
-    case 'monthly':
-      return '매월';
-    case 'quarterly':
-      return '3개월마다';
-    case 'yearly':
-      return '매년';
-    case 'per_event':
-      return `연 ${fee.timesPerYear ?? 1}회`;
-  }
+/** 익명 처리된 번호(02-0000-0000 등)는 전화 걸기를 숨긴다 */
+export function callablePhone(phone: string): boolean {
+  return /\d/.test(phone) && !/0000-0000$/.test(phone);
 }
 
-export function AcademyPage() {
-  const { id = '' } = useParams();
-  const [params, setParams] = useSearchParams();
-  const academies = useAcademies();
-  const academy = getAcademy(id);
-  const { settings, updateSettings, toggleFavorite, isFavorite, addCompare, addCalc, showToast, reports } = useApp();
-  const metric = settings.metric;
-  const [includeOptional, setIncludeOptional] = useState(false);
-  const [discounts, setDiscounts] = useState<DiscountType[]>([]);
+function marketLabel(row: MarketRow, mode: DataMode, data: DistrictData): string {
+  return `${marketScopeName(row, mode, data)} ${row.age ? AGE_LABELS[row.age] + ' ' : ''}${SUBJECT_MAP[row.subjectId]?.name ?? ''}`;
+}
 
-  const plan = academy?.plans.find((p) => p.id === params.get('plan')) ?? academy?.plans[0];
-
-  const cost = useMemo(() => (academy && plan ? computeCost(academy, plan, { includeOptional, discounts }) : null), [academy, plan, includeOptional, discounts]);
-  const baseCost = useMemo(() => (academy && plan ? computeCost(academy, plan) : null), [academy, plan]);
-  const peer = useMemo(() => (academy && plan ? comparePlanToPeers(academies, academy, plan, metric) : null), [academies, academy, plan, metric]);
-  const alternatives = useMemo(() => (academy && plan ? cheaperAlternatives(academies, academy, plan, metric) : []), [academies, academy, plan, metric]);
-
-  if (!academy || !plan || !cost || !baseCost) {
-    return (
-      <div className="pt-6">
-        <EmptyState title="학원을 찾을 수 없어요" action={<Link to="/search" className="btn-primary">검색으로 가기</Link>} />
-      </div>
-    );
-  }
-
-  const fav = isFavorite(academy.id);
-  const myReports = reports.filter((r) => r.academyId === academy.id);
-  const fmt = (v: number) => formatMetric(metric, v);
-
+function CourseRow({ course, selected, onSelect, rows, academy }: { course: Course; selected: boolean; onSelect: () => void; rows: MarketRow[]; academy: RealAcademy }) {
+  const comparable = isComparableCourse(course);
+  const market = comparable ? marketForCourse(rows, academy, course) : null;
+  const pos = market ? positionOf(course.price, market.row) : null;
+  const perSession = pricePerSession(course);
   return (
-    <div className="mx-auto max-w-3xl">
-      <BackButton />
-      <header className="mt-1 flex items-start gap-3">
-        <SubjectTile subjectId={academy.subjectIds[0]} size="lg" />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[22px] font-bold leading-tight tracking-tight">{academy.name}</h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-ink-2">
-            <SubjectChips subjectIds={academy.subjectIds} />
-            <span>
-              {academy.region.sigungu} {academy.region.dong}
-            </span>
-            <Stars value={academy.rating} count={academy.reviewCount} />
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
-            <SourceBadge source={academy.priceSource} />
-            <span>가격 업데이트 {dotDate(academy.priceUpdatedAt)}</span>
-          </div>
-        </div>
+    <li>
+      <label className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${selected ? 'border-accent bg-accent-soft/40' : 'border-line'} ${comparable ? '' : 'opacity-75'}`}>
+        <input type="radio" name="course" className="mt-1 accent-[rgb(var(--accent))]" checked={selected} onChange={onSelect} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-medium leading-snug">{course.name}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-ink-3">
+            {course.subjectId && <SubjectChips subjectIds={[course.subjectId]} />}
+            {course.ages.map((a) => (
+              <span key={a} className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">
+                {AGE_LABELS[a]}
+              </span>
+            ))}
+            {course.sessionsPerWeek && <span>주 {course.sessionsPerWeek}회</span>}
+            {course.private && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">1:1 · 비교 제외</span>}
+            {course.excluded && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">비교 제외 · {course.excluded}</span>}
+            {!course.subjectId && !course.excluded && !course.private && <span>과목 미분류</span>}
+          </span>
+        </span>
+        <span className="flex shrink-0 flex-col items-end gap-1 text-right">
+          <span className="num text-[16px] font-bold">{manwon(course.price)}</span>
+          {perSession && <span className="num text-[11px] text-ink-3">회당 약 {unitPrice(perSession)}</span>}
+          {pos && <PriceLevelBadge level={pos.level} diff={pos.diffFromMedian} />}
+        </span>
+      </label>
+    </li>
+  );
+}
+
+function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; onClose: () => void; academy: RealAcademy; course: Course | null; data: DistrictData }) {
+  const { addCalc, calc, showToast } = useApp();
+  const people = Array.from(new Set(calc.map((c) => c.person)));
+  const [person, setPerson] = useState(people[0] ?? '첫째');
+  const [amount, setAmount] = useState(course ? String(course.price / 10000) : '');
+  const monthly = Math.round(Number(amount) * 10000);
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="내 학원비에 추가"
+      footer={
         <button
           type="button"
-          aria-pressed={fav}
-          aria-label={fav ? '찜 해제' : '찜하기'}
+          className="btn-primary w-full"
+          disabled={!(monthly > 0) || !person.trim()}
           onClick={() => {
-            toggleFavorite(academy.id);
-            showToast(fav ? '찜을 해제했어요' : '찜한 학원에 추가했어요');
+            addCalc({
+              person: person.trim(),
+              name: academy.name + (course ? ` · ${course.name}` : ''),
+              monthly,
+              subjectId: course?.subjectId ?? academy.subjects[0] ?? null,
+              age: course && course.ages.length === 1 ? course.ages[0] : null,
+              sido: academy.sido,
+              sigungu: academy.unassigned ? data.sigungu : academy.sigungu,
+              ref: refOf(academy, data),
+              course: course?.name,
+              reportedPrice: course?.price,
+            });
+            onClose();
+            showToast('내 학원비에 추가했어요');
           }}
-          className="rounded-full p-2 text-ink-3 hover:bg-surface-2"
         >
-          <Heart className={`h-6 w-6 ${fav ? 'fill-pricey text-pricey' : ''}`} />
+          추가하기
         </button>
-      </header>
-
-      <Section title="요금제" desc={`${academy.plans.length}개 · 선택하면 아래 비용 계산이 바뀌어요`}>
-        <div role="radiogroup" aria-label="요금제 선택" className="flex flex-col gap-2">
-          {academy.plans.map((p) => {
-            const u = planUnits(p);
-            const selected = p.id === plan.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setParams({ plan: p.id }, { replace: true })}
-                className={`card flex items-center gap-3 p-3 text-left transition-colors ${selected ? 'border-accent ring-1 ring-accent' : 'hover:bg-surface-2'}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${selected ? 'border-accent bg-accent text-on-accent' : 'border-line'}`}
-                >
-                  {selected && <Check className="h-3 w-3" strokeWidth={3} />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-semibold">{p.name}</span>
-                  <span className="block text-[12px] text-ink-3">
-                    {scheduleLabel(p)} · {CLASS_TYPE_LABELS[p.classType]}
-                    {p.classType !== 'private' && ` 정원 ${p.maxStudents}명`} · {p.targets.map((t) => AGE_LABELS[t]).join('·')}
-                  </span>
-                </span>
-                <span className="num shrink-0 text-right">
-                  <span className="block text-[15px] font-bold">
-                    <span className="mr-1 text-[11px] font-semibold text-ink-3">{billingLabel(p)}</span>
-                    {manwon(p.price)}
-                  </span>
-                  <span className="block text-[11px] text-ink-3">시간당 {unitPrice(u.pricePerHour)}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section title="가격 한눈에" desc={`${plan.name} 기준 · 필수 비용 포함, 할인 미적용`}>
-        <div className="card p-4">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-            {(
-              [
-                ['effectiveMonthly', manwon(baseCost.effectiveMonthly)],
-                ['monthlyTuition', manwon(baseCost.monthlyTuition)],
-                ['pricePerHour', unitPrice(baseCost.pricePerHour)],
-                ['pricePerSession', unitPrice(baseCost.pricePerSession)],
-                ['firstPayment', manwon(baseCost.firstPayment)],
-                ['annualTotal', manwon(baseCost.annualTotal)],
-              ] as const
-            ).map(([m, v]) => (
-              <div key={m}>
-                <dt className="text-[12px] text-ink-3">{METRIC_MAP[m].label}</dt>
-                <dd className="text-[18px] font-bold tracking-tight">{v}</dd>
-              </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="label" htmlFor="budget-person">
+            누구의 학원비인가요?
+          </label>
+          <input id="budget-person" className="field" value={person} onChange={(e) => setPerson(e.target.value)} list="budget-people" />
+          <datalist id="budget-people">
+            {people.map((p) => (
+              <option key={p} value={p} />
             ))}
-          </dl>
-          <p className="mt-3 border-t border-line pt-3 text-[12px] text-ink-3">
-            월 {baseCost.sessionsPerMonth}회 · 월 {hoursLabel(baseCost.hoursPerMonth)} 수업 (한 달 4주 기준)
+          </datalist>
+        </div>
+        <div>
+          <label className="label" htmlFor="budget-amount">
+            실제로 내는 월 금액 (만원)
+          </label>
+          <input id="budget-amount" className="field num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 32" />
+          <p className="mt-1 text-[12px] text-ink-3">
+            {course ? `교육청 신고 교습비는 ${manwon(course.price)}이에요. 할인·교재비 등으로 다르면 실제 금액을 넣어 주세요.` : '교육청에 교습비가 공개되지 않은 곳이에요. 실제로 내는 금액을 넣어 주세요.'}
           </p>
         </div>
+      </div>
+    </Sheet>
+  );
+}
 
-        <div className="card mt-3 p-4">
-          <h3 className="text-[15px] font-bold">같은 조건 학원과 비교</h3>
-          <div className="mt-2">
-            <MetricPicker value={metric} onChange={(m) => updateSettings({ metric: m })} />
-          </div>
-          {peer ? (
-            <>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <PriceLevelBadge level={peer.level} compact />
-                <p className="text-[14px]">
-                  {peer.scopeLabel} {peer.stats.n}개 요금제 중 <b>저렴한 순 {peer.rank}번째</b> · 중앙값보다{' '}
-                  <b className={peer.diffFromMedian <= 0 ? 'text-cheap' : 'text-pricey'}>{signedPercent(peer.diffFromMedian)}</b>
-                </p>
-              </div>
-              <div className="mt-4">
-                <RangeStrip stats={peer.stats} value={baseCost[metric]} format={fmt} />
-              </div>
-              <p className="mt-3 text-[12px] text-ink-3">
-                비교 대상: {peer.scopeLabel} · {SUBJECT_MAP[plan.subjectId].name} · {plan.targets.map((t) => AGE_LABELS[t]).join('/')} · {CLASS_TYPE_LABELS[plan.classType]} 요금제.{' '}
-                {PRICE_LEVEL_META[peer.level].tone === 'pricey' && alternatives.length > 0 && '아래에 더 저렴한 곳을 모았어요.'}
-              </p>
-            </>
-          ) : (
-            <p className="mt-3 text-[13px] text-ink-3">비교할 만큼 같은 조건의 학원이 많지 않아요.</p>
-          )}
-        </div>
-      </Section>
+function Detail({ data, id, courseParam }: { data: DistrictData; id: string; courseParam: string | null }) {
+  const academy = useMemo(() => [...data.academies, ...data.unknownDistrict].find((a) => a.id === id), [data, id]);
+  if (!academy) {
+    return (
+      <EmptyState
+        title="이번 교육청 자료에서 이 학원을 찾지 못했어요"
+        desc="폐원·휴원했거나 등록 정보가 바뀌었을 수 있어요. 같은 지역에서 다시 검색해 보세요."
+        action={
+          <Link to={`/search?sido=${encodeURIComponent(data.sido)}&sigungu=${encodeURIComponent(data.sigungu)}`} className="btn-ghost">
+            {data.sigungu} 학원 찾기
+          </Link>
+        }
+      />
+    );
+  }
+  return <AcademyView data={data} academy={academy} courseParam={courseParam} />;
+}
 
-      <Section title="내 조건으로 계산" desc="할인과 선택 비용을 넣어 실제로 낼 금액을 확인하세요">
-        <div className="card p-4">
-          <Toggle
-            id="opt-extra"
-            label="선택 비용도 포함"
-            desc={academy.extraFees.filter((f) => !f.required).map((f) => f.name).join(', ') || '선택 비용 없음'}
-            checked={includeOptional}
-            onChange={setIncludeOptional}
-          />
-          {academy.discounts.length > 0 && (
-            <div className="mt-2 border-t border-line pt-3">
-              <p className="mb-1 text-[13px] font-semibold text-ink-2">받을 수 있는 할인</p>
-              {academy.discounts.map((d) => (
-                <Toggle
-                  key={d.id}
-                  id={`dsc-${d.id}`}
-                  label={d.label}
-                  desc={d.type === 'prepay' && plan.billing !== 'monthly' ? '기간권에는 적용되지 않아요' : undefined}
-                  checked={discounts.includes(d.type)}
-                  onChange={(v) => setDiscounts((prev) => (v ? [...prev, d.type] : prev.filter((x) => x !== d.type)))}
-                />
-              ))}
-            </div>
-          )}
-          <table className="num mt-3 w-full border-t border-line text-[14px]">
-            <tbody>
-              {[
-                ['월 수강료', won(cost.monthlyTuition), cost.monthlyTuition !== cost.baseMonthlyTuition ? `할인 전 ${won(cost.baseMonthlyTuition)}` : ''],
-                ['매월 부대비용', won(cost.monthlyFees), '차량비·재료비 등'],
-                ['정기 비용 (연간)', won(cost.periodicAnnual), '교재·심사·보험 등'],
-                ['초기 비용 (1회)', won(cost.oneTime), '등록비·도복·장비 등'],
-              ].map(([label, value, note]) => (
-                <tr key={label} className="border-b border-line">
-                  <th scope="row" className="py-2 text-left font-normal text-ink-2">
-                    {label}
-                    {note && <span className="block text-[11px] text-ink-3">{note}</span>}
-                  </th>
-                  <td className="py-2 text-right font-semibold">{value}</td>
-                </tr>
-              ))}
-              <tr className="border-b border-line">
-                <th scope="row" className="py-2 text-left font-semibold">
-                  첫 결제 금액
-                </th>
-                <td className="py-2 text-right text-[16px] font-bold">{won(cost.firstPayment)}</td>
-              </tr>
-              <tr className="border-b border-line">
-                <th scope="row" className="py-2 text-left font-semibold">
-                  1년 총비용
-                </th>
-                <td className="py-2 text-right text-[16px] font-bold">{won(cost.annualTotal)}</td>
-              </tr>
-              <tr>
-                <th scope="row" className="py-2 text-left font-semibold">
-                  실질 월 부담
-                </th>
-                <td className="py-2 text-right text-[18px] font-bold text-accent">{won(cost.effectiveMonthly)}</td>
-              </tr>
-            </tbody>
-          </table>
-          {cost.annualSaving > 0 && (
-            <p className="mt-2 rounded-lg bg-cheap-soft px-3 py-2 text-[13px] font-semibold text-cheap">할인으로 1년에 {won(cost.annualSaving)} 아낄 수 있어요</p>
-          )}
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => {
-                const r = addCompare({ academyId: academy.id, planId: plan.id });
-                showToast(r === 'full' ? '비교함은 최대 4곳까지 담을 수 있어요' : r === 'updated' ? '비교함의 요금제를 바꿨어요' : '비교함에 담았어요');
-              }}
-            >
-              <Plus aria-hidden="true" className="h-4 w-4" /> 비교함 담기
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                addCalc({ person: '첫째', academyId: academy.id, planId: plan.id, discounts, includeOptional });
-                showToast('내 학원비 계산기에 담았어요');
-              }}
-            >
-              <Wallet aria-hidden="true" className="h-4 w-4" /> 계산기 담기
-            </button>
+function AcademyView({ data, academy, courseParam }: { data: DistrictData; academy: RealAcademy; courseParam: string | null }) {
+  const market = useMarket([data]);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const sortedCourses = useMemo(
+    () => [...academy.courses].sort((x, y) => Number(!isComparableCourse(x)) - Number(!isComparableCourse(y)) || (x.subjectId ?? 'zz').localeCompare(y.subjectId ?? 'zz') || x.price - y.price),
+    [academy],
+  );
+  const defaultCourse = sortedCourses.find((c) => c.name === courseParam) ?? sortedCourses.find(isComparableCourse) ?? sortedCourses[0] ?? null;
+  const [selectedName, setSelectedName] = useState<string | null>(defaultCourse?.name ?? null);
+  const selected = sortedCourses.find((c) => c.name === selectedName) ?? defaultCourse;
+  const region = { sido: data.sido, sigungu: data.sigungu };
+  const actions = useAcademyActions(academy, region);
+
+  const comparable = selected && isComparableCourse(selected) ? selected : null;
+  const match = comparable ? marketForCourse(market.rows, academy, comparable) : null;
+  const pos = comparable && match ? positionOf(comparable.price, match.row) : null;
+  const rawAge = match?.row.age ?? null;
+  const localPrices = comparable && match && !match.widened ? academyPrices(data.academies, comparable.subjectId!, rawAge) : [];
+  const alternatives = comparable ? cheaperAlternatives(data, academy, comparable) : [];
+  const mode = market.mode ?? data.mode;
+
+  return (
+    <div>
+      <div className="flex items-start gap-3">
+        {academy.subjects[0] && <SubjectTile subjectId={academy.subjects[0]} size="lg" />}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[22px] font-bold leading-tight tracking-tight">{academy.name}</h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-3">
+            <KindBadge kind={academy.kind} />
+            {academy.realm && <span>{academy.realm}</span>}
+            {academy.category && <span>· {academy.category}</span>}
+            {academy.subjects.length > 0 && <SubjectChips subjectIds={academy.subjects} />}
           </div>
         </div>
-      </Section>
+      </div>
 
-      <Section title="부대비용" desc="주기별 금액과 1년 환산액">
-        {academy.extraFees.length === 0 ? (
-          <p className="card p-4 text-[14px] text-ink-2">별도 부대비용이 등록되지 않았어요.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className="btn-ghost" onClick={actions.onFavorite} aria-pressed={actions.fav}>
+          <Heart aria-hidden="true" className={`h-4 w-4 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
+          {actions.fav ? '찜함' : '찜하기'}
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => actions.onCompare(selected?.name ?? null)}>
+          {actions.comparing ? <Check aria-hidden="true" className="h-4 w-4 text-accent" /> : <Plus aria-hidden="true" className="h-4 w-4" />}
+          {actions.comparing ? '비교함 과정 바꾸기' : '비교함에 담기'}
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => setBudgetOpen(true)}>
+          <Wallet aria-hidden="true" className="h-4 w-4" />내 학원비에 추가
+        </button>
+      </div>
+
+      <dl className="card mt-4 grid gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
+        <div className="flex gap-2 sm:col-span-2">
+          <dt className="w-16 shrink-0 text-ink-3">주소</dt>
+          <dd className="min-w-0">
+            {academy.address || '-'}
+            {academy.unassigned && <span className="block text-[12px] text-ink-3">교육청 자료에 구가 없어 {academy.sigungu}의 어느 구인지 확인하지 못했어요.</span>}
+            {academy.address && (
+              <a
+                href={`https://map.naver.com/p/search/${encodeURIComponent(academy.address.replace(/\s*\(.*$/, '').replace(/,.*$/, ''))}`}
+                target="_blank"
+                rel="noreferrer"
+                className="ml-1 inline-flex items-center gap-0.5 text-[12px] font-semibold text-accent hover:underline"
+              >
+                <MapPin aria-hidden="true" className="h-3 w-3" />
+                지도 <ExternalLink aria-hidden="true" className="h-3 w-3" />
+              </a>
+            )}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">전화</dt>
+          <dd>
+            {callablePhone(academy.phone) ? (
+              <a href={`tel:${academy.phone}`} className="inline-flex items-center gap-1 font-semibold text-accent hover:underline">
+                <Phone aria-hidden="true" className="h-3.5 w-3.5" />
+                {academy.phone}
+              </a>
+            ) : (
+              <span className="text-ink-3">공개되지 않음</span>
+            )}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">정원</dt>
+          <dd>{academy.capacity ? `${academy.capacity.toLocaleString()}명` : '-'}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">설립</dt>
+          <dd>{academy.established ? dotDate(academy.established) : '-'}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-16 shrink-0 text-ink-3">자료 갱신</dt>
+          <dd>{academy.loadedAt ? dotDate(academy.loadedAt) : '-'} (교육청)</dd>
+        </div>
+      </dl>
+
+      <Section title="교습과정별 신고 교습비" desc="학원이 교육청에 신고한 1인 월 교습비예요. 과정을 고르면 아래에서 시세와 비교해요.">
+        {sortedCourses.length === 0 ? (
+          <p className="card p-4 text-sm text-ink-2">
+            교육청 자료에 교습비가 공개되지 않았어요. 학원(교습소가 아닌 곳)은 공개 자료에 교습비가 비어 있는 경우가 많아요. 전화로 문의한 금액은 ‘내 학원비’에 넣어 관리할 수 있어요.
+          </p>
         ) : (
-          <ul className="card divide-y divide-line">
-            {academy.extraFees.map((f) => (
-              <li key={f.id} className="flex items-start justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-[14px] font-semibold">
-                    {f.name}{' '}
-                    <span className={`ml-1 rounded px-1 py-0.5 text-[11px] font-semibold ${f.required ? 'bg-pricey-soft text-pricey' : 'bg-surface-2 text-ink-3'}`}>
-                      {f.required ? '필수' : '선택'}
-                    </span>
-                  </p>
-                  <p className="text-[12px] text-ink-3">
-                    {frequencyLabel(f)}
-                    {f.note && ` · ${f.note}`}
-                  </p>
-                </div>
-                <div className="num shrink-0 text-right">
-                  <p className="text-[14px] font-bold">{won(f.amount)}</p>
-                  <p className="text-[11px] text-ink-3">{f.frequency === 'once' ? '처음 한 번' : `연 ${manwon(annualRecurring(f))}`}</p>
-                </div>
-              </li>
+          <ul className="flex flex-col gap-2">
+            {sortedCourses.map((c) => (
+              <CourseRow key={`${c.name}|${c.price}`} course={c} selected={selected === c} onSelect={() => setSelectedName(c.name)} rows={market.rows} academy={academy} />
             ))}
           </ul>
         )}
       </Section>
 
-      {academy.discounts.length > 0 && (
-        <Section title="할인 혜택">
-          <ul className="flex flex-wrap gap-2">
-            {academy.discounts.map((d) => (
-              <li key={d.id} className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px] font-semibold">
-                {d.label}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {academy.priceHistory.length > 2 && (
-        <Section title="가격 변동" desc="매년 3월 기준 요금">
-          <div className="card p-4">
-            <PriceHistoryChart history={academy.priceHistory} plans={academy.plans} format={manwon} />
-          </div>
-        </Section>
-      )}
-
-      {alternatives.length > 0 && (
-        <Section title="같은 조건, 더 저렴한 곳" desc={`${METRIC_MAP[metric].label} 기준 · 같은 구 우선`}>
-          <ul className="card divide-y divide-line">
-            {alternatives.map((alt) => {
-              const diff = alt.cost[metric] - baseCost[metric];
-              return (
-                <li key={alt.academy.id}>
-                  <Link to={`/academy/${alt.academy.id}?plan=${alt.plan.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2">
-                    <SubjectTile subjectId={alt.plan.subjectId} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold">{alt.academy.name}</span>
-                      <span className="block truncate text-[12px] text-ink-3">
-                        {alt.academy.region.sigungu} {alt.academy.region.dong} · {alt.plan.name}
-                      </span>
-                    </span>
-                    <span className="num shrink-0 text-right">
-                      <span className="block text-[14px] font-bold">{fmt(alt.cost[metric])}</span>
-                      <span className="block text-[12px] font-semibold text-cheap">{formatMetric(metric, diff)}</span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </Section>
-      )}
-
-      <Section title="학원 정보">
-        <div className="card p-4 text-[14px]">
-          <p className="text-ink-2">{academy.description}</p>
-          <ul className="mt-3 flex flex-col gap-2">
-            <li className="flex gap-2">
-              <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              {academy.address}
-            </li>
-            <li className="flex gap-2">
-              <Phone aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              <span className="select-all">{academy.phone}</span>
-              <span className="text-[12px] text-ink-3">(예시 번호)</span>
-            </li>
-            <li className="flex gap-2">
-              <Clock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              {academy.hours}
-            </li>
-            <li className="flex gap-2">
-              <Users aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              {academy.isPublic ? '강사' : '선생님·코치'} {academy.teacherCount}명 · {academy.establishedYear}년 개원
-            </li>
-            <li className="flex gap-2">
-              <Bus aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              {academy.shuttle ? '차량 운행' : '차량 운행 없음'}
-            </li>
-            <li className="flex gap-2">
-              <Car aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-              {academy.parking ? '주차 가능' : '주차 불가'}
-            </li>
-          </ul>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {academy.features.map((f) => (
-              <span key={f} className="rounded-md bg-surface-2 px-2 py-1 text-[12px] font-medium text-ink-2">
-                {f}
-              </span>
-            ))}
-          </div>
-          {academy.trialClass.available && (
-            <p className="mt-3 rounded-lg bg-accent-soft px-3 py-2 text-[13px] font-semibold text-accent">
-              체험 수업 {academy.trialClass.price ? won(academy.trialClass.price) : '무료'}
-            </p>
+      {comparable && (
+        <Section title="시세와 비교" desc={match ? `${marketLabel(match.row, mode, data)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
+          {match && pos ? (
+            <div className="card flex flex-col gap-4 p-4">
+              <p className="text-[15px]">
+                <b>{comparable.name}</b> {manwon(comparable.price)}은(는) 중앙값 {manwon(match.row.median)}보다{' '}
+                <b className={pos.diffFromMedian < -0.005 ? 'text-cheap' : pos.diffFromMedian > 0.005 ? 'text-pricey' : ''}>
+                  {Math.abs(pos.diffFromMedian) < 0.005 ? '거의 같아요' : `${signedPercent(pos.diffFromMedian)} (${manwon(Math.abs(comparable.price - match.row.median))} ${pos.diffFromMedian < 0 ? '저렴' : '비쌈'})`}
+                </b>
+                <span className="block text-[13px] text-ink-3">저렴한 쪽부터 {Math.round(pos.percentile)}% 위치</span>
+              </p>
+              <RangeStrip stats={{ n: match.row.n, min: match.row.min, max: match.row.max, mean: match.row.median, median: match.row.median, p25: match.row.p25, p75: match.row.p75 }} value={comparable.price} format={manwon} />
+              {match.widened && <p className="text-[12px] text-ink-3">{data.sigungu}에 같은 조건으로 교습비를 공개한 곳이 3곳 미만이라 범위를 넓혀 비교했어요.</p>}
+              {localPrices.length >= 5 && (
+                <Histogram values={localPrices} median={match.row.median} marker={{ value: comparable.price, label: '이 과정' }} format={manwon} tickFormat={shortMan} unitLabel="곳" />
+              )}
+            </div>
+          ) : (
+            <p className="card p-4 text-sm text-ink-2">같은 과목·대상으로 교습비를 공개한 곳이 3곳 미만이라 아직 시세를 낼 수 없어요.</p>
           )}
-        </div>
-      </Section>
+        </Section>
+      )}
 
-      <Section title="후기" desc={`평점 ${academy.rating.toFixed(1)} · 가격 만족도 ${academy.priceSatisfaction.toFixed(1)} / 5`}>
-        <ul className="flex flex-col gap-2">
-          {academy.reviews.map((r) => (
-            <li key={r.id} className="card p-4">
-              <div className="flex items-center justify-between gap-2 text-[12px] text-ink-3">
-                <span>
-                  <Stars value={r.rating} /> <span className="ml-1">가격 만족 {r.priceSatisfaction}/5</span>
-                </span>
-                <span>
-                  {r.author} · {dotDate(r.date)}
-                </span>
-              </div>
-              <p className="mt-2 text-[14px]">{r.text}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-[12px] text-ink-3">예시 후기입니다.</p>
-      </Section>
-
-      <Section title="가격 제보" desc="실제로 안내받은 가격이 다르면 알려주세요. 이 기기에 저장됩니다.">
-        {myReports.length > 0 && (
-          <ul className="mb-3 flex flex-col gap-2">
-            {myReports.map((r) => {
-              const u = planUnits({ ...plan, billing: r.billing, price: r.price, sessionsPerWeek: r.sessionsPerWeek, minutesPerSession: r.minutesPerSession, months: r.months, totalSessions: r.totalSessions });
-              return (
-                <li key={r.id} className="card flex items-center justify-between gap-3 p-3 text-[13px]">
+      {alternatives.length > 0 && comparable && (
+        <Section title="같은 동네에서 더 저렴한 곳" desc={`${SUBJECT_MAP[comparable.subjectId!]?.name ?? ''}${comparable.ages.length === 1 ? ` · ${AGE_LABELS[comparable.ages[0]]}` : ''} 과정 신고 교습비 기준`}>
+          <ul className="card divide-y divide-line">
+            {alternatives.map(({ academy: a, course }) => (
+              <li key={a.id}>
+                <Link to={academyPath(refOf(a, region), course.name)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-2">
                   <span className="min-w-0">
-                    <b className="block truncate">{r.planName}</b>
-                    <span className="text-ink-3">
-                      제보 {dotDate(r.createdAt)} · 주{r.sessionsPerWeek}회 {r.minutesPerSession}분
+                    <span className="block truncate text-[14px] font-semibold">{a.name}</span>
+                    <span className="block truncate text-[12px] text-ink-3">
+                      {a.kind} · {a.dong || a.sigungu} · {course.name}
                     </span>
                   </span>
                   <span className="num shrink-0 text-right">
-                    <b className="block">{manwon(r.price)}</b>
-                    <span className="text-ink-3">시간당 {unitPrice(u.pricePerHour)}</span>
+                    <b className="block text-[15px]">{manwon(course.price)}</b>
+                    <span className="text-[11px] text-cheap">-{manwon(comparable.price - course.price)}</span>
                   </span>
-                </li>
-              );
-            })}
+                </Link>
+              </li>
+            ))}
           </ul>
-        )}
-        <PriceReportForm academy={academy} defaultPlan={plan} />
-      </Section>
+        </Section>
+      )}
+
+      <div className="mt-6">
+        <DataStamp data={data} />
+        <p className="mt-1 text-[12px] text-ink-3">신고 교습비는 실제 받는 금액(할인·교재비·차량비 등)과 다를 수 있어요. 등록 전 학원에 꼭 확인하세요.</p>
+      </div>
+
+      {budgetOpen && <AddToBudget open onClose={() => setBudgetOpen(false)} academy={academy} course={comparable ?? selected} data={data} />}
+    </div>
+  );
+}
+
+export function AcademyPage() {
+  const { sido = '', sigungu = '', id = '' } = useParams();
+  const [params] = useSearchParams();
+  const district = useDistrictData(sido, sigungu);
+  return (
+    <div>
+      <div className="pb-2 pt-2">
+        <BackButton />
+      </div>
+      <div>
+        <DistrictGate state={district} onRetry={district.reload}>
+          {(data) => <Detail key={id} data={data} id={id} courseParam={params.get('course')} />}
+        </DistrictGate>
+      </div>
     </div>
   );
 }

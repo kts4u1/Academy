@@ -126,23 +126,15 @@ def main(path):
             if n not in seen:
                 seen.add(n)
                 names.append(n)
-        # 고르게 4~5개 뽑기
-        k = min(5, len(names))
-        step = len(names) / k
-        picks = [names[int(i * step)] for i in range(k)]
-
         row = {
             'sido': sido,
             'sidoFull': g['sidoFull'],
             'sigungu': display_sigungu(sgg),
             'code': g['code'],
-            'dongs': picks,
+            'dongs': names,
             'lat': round(center[1], 4),
             'lng': round(center[0], 4),
         }
-        # 일반구·인천 새 구: 교육청 주소에 구 이름이 없을 때 동 이름으로 구를 가리기 위한 전체 동 목록
-        if re.match(r'^.+시.+구$', sgg) or (sido == '인천' and sgg in ('제물포구', '영종구', '서해구', '검단구')):
-            row['dongIndex'] = sorted(set(names))
         rows.append(row)
 
     rows.sort(key=lambda r: (SIDO_ORDER.index(r['sido']), r['sigungu']))
@@ -151,7 +143,7 @@ def main(path):
         '// 자동 생성 파일 – 직접 고치지 마세요. (scripts/build_districts.py)',
         '// 출처: vuski/admdongkor 행정동 경계 ver20260701 (통계청 SGIS 경계 기반)',
         '// code 는 행정구역코드 앞 5자리(시·군·구).',
-        '// lat/lng 는 거리 계산용 대표 지점, dongs 는 실제 행정동 이름(숫자 제거) 일부.',
+        '// lat/lng 는 시가지 중심, dongs 는 행정동 이름 전체(숫자 제거). 동 이름 검색과 교육청 주소로 구를 가릴 때 쓴다.',
         '',
         'export interface DistrictSeed {',
         '  sido: string;',
@@ -162,8 +154,6 @@ def main(path):
         '  dongs: string[];',
         '  lat: number;',
         '  lng: number;',
-        '  /** 일반구·인천 새 구의 전체 동 이름 (교육청 주소로 구를 가릴 때) */',
-        '  dongIndex?: string[];',
         '}',
         '',
         'export const DISTRICT_SEEDS: DistrictSeed[] = [',
@@ -171,7 +161,7 @@ def main(path):
     for r in rows:
         lines.append('  ' + json.dumps(r, ensure_ascii=False).replace('"sido":', 'sido:').replace('"sidoFull":', 'sidoFull:')
                      .replace('"sigungu":', 'sigungu:').replace('"code":', 'code:').replace('"dongs":', 'dongs:')
-                     .replace('"lat":', 'lat:').replace('"lng":', 'lng:').replace('"dongIndex":', 'dongIndex:').replace('"', "'") + ',')
+                     .replace('"lat":', 'lat:').replace('"lng":', 'lng:').replace('"', "'") + ',')
     lines.append('];')
     lines.append('')
     out.write_text('\n'.join(lines), encoding='utf-8')

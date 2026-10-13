@@ -46,6 +46,13 @@ export function km(value: number): string {
   return value < 1 ? `${Math.round(value * 1000)}m` : `${value.toFixed(1)}km`;
 }
 
+/** ISO 시각 → 한국 시간 날짜 "2026.10.13" (자동 업데이트는 한국 시간 월요일 새벽, UTC 로는 일요일이다) */
+export function kstDate(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return dotDate(iso.slice(0, 10));
+  return dotDate(new Date(t + 9 * 60 * 60 * 1000).toISOString().slice(0, 10));
+}
+
 /** "2026-09-14" → "2026.09.14" */
 export function dotDate(iso: string): string {
   return iso.replaceAll('-', '.');

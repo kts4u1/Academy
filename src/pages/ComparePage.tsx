@@ -1,343 +1,255 @@
 import { Trash, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CostStack } from '../charts/CostStack';
-import { EmptyState, PageHeader, PriceLevelBadge, Section, SubjectTile, Toggle } from '../components/ui';
-import { getAcademy } from '../data';
-import { CLASS_TYPE_LABELS, SUBJECT_MAP } from '../data/categories';
-import { useAcademies, useOrigin } from '../hooks';
-import { hoursLabel, km, manwon, unitPrice, withJosa, won } from '../lib/format';
-import { distanceKm } from '../lib/geo';
-import { comparePlanToPeers } from '../lib/market';
-import { billingLabel, computeCost, METRIC_MAP, scheduleLabel, type CostBreakdown, type Metric } from '../lib/pricing';
-import { EMPTY_FILTERS, searchAcademies } from '../lib/search';
-import { MAX_COMPARE, useApp } from '../store/AppContext';
-import type { Academy, DiscountType, PricePlan } from '../types';
+import { HBarList } from '../charts/HBarList';
+import { academyPath } from '../components/AcademyCard';
+import { LoadingState } from '../components/DataState';
+import { EmptyState, PageHeader, PriceLevelBadge, Section, SubjectChips } from '../components/ui';
+import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
+import type { DataMode } from '../data/source';
+import { useDistricts, useMarket } from '../hooks';
+import { dotDate, manwon, unitPrice } from '../lib/format';
+import { isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
+import { marketForCourse, marketScopeName, type MarketMatch } from '../lib/realSearch';
+import { MAX_COMPARE, useApp, type CompareItem } from '../store/AppContext';
 
 interface Column {
-  academy: Academy;
-  plan: PricePlan;
-  cost: CostBreakdown;
+  item: CompareItem;
+  academy: RealAcademy | null;
+  course: Course | null;
+  match: MarketMatch | null;
+  position: ReturnType<typeof positionOf> | null;
 }
 
-type RowDef = {
-  key: string;
-  label: string;
-  hint?: string;
-  value: (c: Column) => number | null;
-  format: (v: number, c: Column) => string;
-  /** 'low' = 낮을수록 좋음, 'high' = 높을수록 좋음 */
-  better?: 'low' | 'high';
-  strong?: boolean;
-};
+function Cell({ children, best }: { children: ReactNode; best?: boolean }) {
+  return <td className={`num px-3 py-2.5 align-top text-[13px] ${best ? 'font-bold text-cheap' : ''}`}>{children}</td>;
+}
 
 export function ComparePage() {
-  const academies = useAcademies();
-  const origin = useOrigin();
-  const { compare, removeCompare, setComparePlan, clearCompare, addCompare, settings, showToast } = useApp();
-  const [includeOptional, setIncludeOptional] = useState(false);
-  const [discountTypes, setDiscountTypes] = useState<DiscountType[]>([]);
+  const { compare, removeCompare, clearCompare, setCompareCourse } = useApp();
+  const { states, loading } = useDistricts(compare.map((c) => c.ref));
+  const datas = Array.from(states.values()).map((s) => s.data);
+  const market = useMarket(datas);
+  const mode: DataMode = market.mode ?? 'static';
 
-  const columns: Column[] = useMemo(
-    () =>
-      compare
-        .map((item) => {
-          const academy = getAcademy(item.academyId);
-          if (!academy) return null;
-          const plan = academy.plans.find((p) => p.id === item.planId) ?? academy.plans[0];
-          return { academy, plan, cost: computeCost(academy, plan, { includeOptional, discounts: discountTypes }) };
-        })
-        .filter((c): c is Column => c !== null),
-    [compare, includeOptional, discountTypes],
-  );
-
-  const loadExample = () => {
-    const home = settings.home;
-    const picks = searchAcademies(
-      academies,
-      { ...EMPTY_FILTERS, subjectIds: ['math'], ages: ['elementary'], classTypes: ['group'], sido: home?.sido ?? '서울' },
-      'distance',
-      'effectiveMonthly',
-      { origin, withPeers: false },
-    ).slice(0, 3);
-    for (const p of picks) addCompare({ academyId: p.academy.id, planId: p.plan.id });
-    showToast('가까운 초등 수학 학원 3곳을 예시로 담았어요');
-  };
-
-  if (columns.length === 0) {
+  if (compare.length === 0) {
     return (
       <div>
-        <PageHeader title="가격 비교" subtitle="최대 4곳을 같은 기준으로 나란히 비교해요" />
+        <PageHeader title="비교함" />
         <EmptyState
           title="비교함이 비어 있어요"
-          desc="검색 결과나 학원 상세에서 '비교'를 누르면 여기에 담겨요. 요금제가 달라도 시간당 단가와 1년 총비용으로 공정하게 비교합니다."
+          desc={`학원 카드의 + 버튼이나 상세 화면의 ‘비교함에 담기’로 최대 ${MAX_COMPARE}곳까지 담아 같은 기준으로 비교해 보세요.`}
           action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <button type="button" className="btn-primary" onClick={loadExample}>
-                예시로 비교해 보기
-              </button>
-              <Link to="/search" className="btn-ghost">
-                학원 찾기
-              </Link>
-            </div>
+            <Link to="/search" className="btn-primary">
+              학원 찾으러 가기
+            </Link>
           }
         />
       </div>
     );
   }
 
-  const subjects = new Set(columns.map((c) => c.plan.subjectId));
-  const offeredDiscounts = Array.from(new Map(columns.flatMap((c) => c.academy.discounts).map((d) => [d.type, d])).values());
-  const peerOf = (c: Column, metric: Metric) => comparePlanToPeers(academies, c.academy, c.plan, metric, c.cost);
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="비교함" />
+        <LoadingState />
+      </div>
+    );
+  }
 
-  const rows: { group: string; items: RowDef[] }[] = [
-    {
-      group: '핵심 비교',
-      items: [
-        { key: 'eff', label: '실질 월 부담', hint: '부대비용·초기비용 포함 1년 ÷ 12', value: (c) => c.cost.effectiveMonthly, format: (v) => won(v), better: 'low', strong: true },
-        { key: 'pph', label: '시간당 단가', hint: '수강료 ÷ 월 수업 시간', value: (c) => c.cost.pricePerHour, format: (v) => unitPrice(v), better: 'low', strong: true },
-        { key: 'annual', label: '1년 총비용', value: (c) => c.cost.annualTotal, format: (v) => won(v), better: 'low', strong: true },
-        { key: 'first', label: '첫 결제 금액', hint: '기간권 총액·등록비·도복 등', value: (c) => c.cost.firstPayment, format: (v) => won(v), better: 'low' },
-      ],
-    },
-    {
-      group: '수강료',
-      items: [
-        { key: 'billed', label: '안내 가격', value: (c) => c.plan.price, format: (v, c) => `${billingLabel(c.plan)} ${won(v)}` },
-        { key: 'monthly', label: '월 환산 수강료', value: (c) => c.cost.monthlyTuition, format: (v) => won(v), better: 'low' },
-        { key: 'pps', label: '회당 단가', value: (c) => c.cost.pricePerSession, format: (v) => unitPrice(v), better: 'low' },
-        { key: 'hours', label: '월 수업 시간', value: (c) => c.cost.hoursPerMonth, format: (v, c) => `${hoursLabel(v)} (${c.cost.sessionsPerMonth}회)`, better: 'high' },
-        { key: 'size', label: '정원', value: (c) => (c.plan.classType === 'private' ? 1 : c.plan.maxStudents), format: (v, c) => (c.plan.classType === 'private' ? '1:1' : `${v}명`), better: 'low' },
-      ],
-    },
-    {
-      group: '부대비용',
-      items: [
-        { key: 'mfee', label: '매월 부대비용', value: (c) => c.cost.monthlyFees, format: (v) => won(v), better: 'low' },
-        { key: 'pfee', label: '정기 비용 (연간)', value: (c) => c.cost.periodicAnnual, format: (v) => won(v), better: 'low' },
-        { key: 'once', label: '초기 비용', value: (c) => c.cost.oneTime, format: (v) => won(v), better: 'low' },
-      ],
-    },
-    {
-      group: '시세 · 평가',
-      items: [
-        {
-          key: 'peer',
-          label: '같은 조건 시세 대비',
-          hint: '시간당 단가 기준',
-          value: (c) => peerOf(c, 'pricePerHour')?.diffFromMedian ?? null,
-          format: (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`,
-          better: 'low',
-        },
-        { key: 'rating', label: '평점', value: (c) => c.academy.rating, format: (v, c) => `${v.toFixed(1)} (${c.academy.reviewCount})`, better: 'high' },
-        { key: 'psat', label: '가격 만족도', value: (c) => c.academy.priceSatisfaction, format: (v) => `${v.toFixed(1)} / 5`, better: 'high' },
-        ...(origin
-          ? [{ key: 'dist', label: '내 동네에서 거리', value: (c: Column) => distanceKm(origin.lat, origin.lng, c.academy.lat, c.academy.lng), format: (v: number) => km(v), better: 'low' as const }]
-          : []),
-      ],
-    },
-  ];
+  const columns: Column[] = compare.map((item) => {
+    const data = states.get(`${item.ref.sido}|${item.ref.sigungu}`)?.data;
+    const academy = data ? ([...data.academies, ...data.unknownDistrict].find((a) => a.id === item.ref.id) ?? null) : null;
+    const course = academy?.courses.find((c) => c.name === item.course) ?? null;
+    const match = academy && course && isComparableCourse(course) ? marketForCourse(market.rows, academy, course) : null;
+    return { item, academy, course, match, position: course && match ? positionOf(course.price, match.row) : null };
+  });
 
-  const bestOf = (row: RowDef): number | null => {
-    if (!row.better || columns.length < 2) return null;
-    const values = columns.map(row.value).filter((v): v is number => v !== null);
-    if (values.length < 2 || new Set(values).size === 1) return null;
-    return row.better === 'low' ? Math.min(...values) : Math.max(...values);
-  };
-
-  const byAnnual = [...columns].sort((a, b) => a.cost.annualTotal - b.cost.annualTotal);
-  const cheapest = byAnnual[0];
-  const priciest = byAnnual[byAnnual.length - 1];
-  const byHour = [...columns].sort((a, b) => a.cost.pricePerHour - b.cost.pricePerHour);
-  const hourDiffers = columns.length > 1 && byHour[0].academy.id !== cheapest.academy.id;
+  const priced = columns.filter((c) => c.course);
+  const minPrice = priced.length > 1 ? Math.min(...priced.map((c) => c.course!.price)) : null;
+  const subjects = new Set(priced.map((c) => c.course!.subjectId ?? '?'));
+  const ageSets = new Set(priced.map((c) => c.course!.ages.join(',')));
 
   return (
     <div>
       <PageHeader
-        title="가격 비교"
-        subtitle={`${columns.length}곳 · 최대 ${MAX_COMPARE}곳`}
+        title="비교함"
+        subtitle={`${compare.length} / ${MAX_COMPARE}곳 · 교육청 신고 교습비 기준`}
         action={
-          <button type="button" className="btn-ghost px-3 py-2 text-[13px]" onClick={clearCompare}>
-            <Trash aria-hidden="true" className="h-4 w-4" /> 비우기
+          <button type="button" className="btn-ghost px-3 py-1.5 text-[13px]" onClick={clearCompare}>
+            <Trash aria-hidden="true" className="h-4 w-4" />
+            비우기
           </button>
         }
       />
 
-      {columns.length > 1 && (
-        <section className="card p-4" aria-label="비교 요약">
-          <p className="text-[16px] leading-relaxed">
-            1년 기준 <b>{withJosa(cheapest.academy.name, '이', '가')}</b> 가장 저렴하고, <b>{priciest.academy.name}</b>보다{' '}
-            <b className="text-cheap">{manwon(priciest.cost.annualTotal - cheapest.cost.annualTotal)}</b> 덜 들어요.
-          </p>
-          {hourDiffers && (
-            <p className="mt-2 text-[14px] text-ink-2">
-              다만 수업 시간까지 따지면 <b className="text-ink">{byHour[0].academy.name}</b>의 시간당 단가({unitPrice(byHour[0].cost.pricePerHour)})가 가장 낮아요.
-            </p>
-          )}
-          {subjects.size > 1 && (
-            <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
-              서로 다른 과목({Array.from(subjects).map((s) => SUBJECT_MAP[s].name).join(', ')})을 비교 중이에요. 총비용 예산 비교용으로 보세요.
-            </p>
-          )}
-        </section>
+      {(subjects.size > 1 || ageSets.size > 1) && (
+        <p className="mb-3 rounded-xl bg-pricey-soft px-3 py-2 text-[13px] text-pricey">
+          {subjects.size > 1 ? '과목이 서로 달라요. ' : '대상 연령이 서로 달라요. '}같은 과목·같은 대상끼리 비교해야 정확해요. 각 학원의 과정을 바꿔 보세요.
+        </p>
       )}
 
-      <section className="card mt-3 p-4" aria-label="비교 조건">
-        <Toggle id="cmp-optional" label="선택 비용 포함" desc="호구, 개인 장비, 대회 참가비 등" checked={includeOptional} onChange={setIncludeOptional} />
-        {offeredDiscounts.length > 0 && (
-          <div className="mt-1 border-t border-line pt-2">
-            <p className="mb-1 text-[13px] font-semibold text-ink-2">할인 적용 (제공하는 학원에만 반영)</p>
-            {offeredDiscounts.map((d) => (
-              <Toggle
-                key={d.type}
-                id={`cmp-dsc-${d.type}`}
-                label={{ sibling: '형제·자매 할인', prepay: '선납 할인', multi_subject: '다과목 할인', first_month: '첫 달 할인', card: '제휴카드 할인' }[d.type]}
-                checked={discountTypes.includes(d.type)}
-                onChange={(v) => setDiscountTypes((prev) => (v ? [...prev, d.type] : prev.filter((x) => x !== d.type)))}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <div className="mt-3 overflow-x-auto rounded-card border border-line bg-surface">
-        <table className="num w-full min-w-[520px] border-collapse text-[13px]">
-          <caption className="sr-only">학원별 가격 비교표</caption>
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>
-            <tr>
-              <th scope="col" className="sticky left-0 z-10 w-[6.5rem] bg-surface p-3 text-left align-bottom text-[12px] font-semibold text-ink-3">
+            <tr className="border-b border-line">
+              <th scope="col" className="w-28 px-3 py-3 text-[12px] font-semibold text-ink-3">
                 항목
               </th>
               {columns.map((c) => (
-                <th key={c.academy.id} scope="col" className="min-w-[140px] border-l border-line p-3 text-left align-top font-normal">
+                <th key={c.item.ref.id} scope="col" className="px-3 py-3 align-top">
                   <div className="flex items-start justify-between gap-1">
-                    <SubjectTile subjectId={c.plan.subjectId} size="sm" />
-                    <button type="button" aria-label={`${c.academy.name} 빼기`} className="rounded p-1 text-ink-3 hover:bg-surface-2" onClick={() => removeCompare(c.academy.id)}>
-                      <X className="h-4 w-4" />
+                    <Link to={academyPath(c.item.ref, c.item.course)} className="text-[14px] font-bold leading-snug hover:text-accent">
+                      {c.item.ref.name}
+                    </Link>
+                    <button type="button" onClick={() => removeCompare(c.item.ref.id)} className="-mr-1 rounded p-0.5 text-ink-3 hover:bg-surface-2" aria-label={`${c.item.ref.name} 빼기`}>
+                      <X aria-hidden="true" className="h-4 w-4" />
                     </button>
                   </div>
-                  <Link to={`/academy/${c.academy.id}?plan=${c.plan.id}`} className="mt-1.5 block text-[14px] font-bold leading-snug hover:text-accent">
-                    {c.academy.name}
-                  </Link>
-                  <span className="block text-[11px] text-ink-3">
-                    {c.academy.region.sigungu} {c.academy.region.dong}
-                  </span>
-                  <label className="sr-only" htmlFor={`cmp-plan-${c.academy.id}`}>
-                    {c.academy.name} 요금제
-                  </label>
-                  <select
-                    id={`cmp-plan-${c.academy.id}`}
-                    className="field mt-2 px-2 py-1.5 text-[12px]"
-                    value={c.plan.id}
-                    onChange={(e) => setComparePlan(c.academy.id, e.target.value)}
-                  >
-                    {c.academy.plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="mt-1 block text-[11px] text-ink-3">
-                    {scheduleLabel(c.plan)} · {CLASS_TYPE_LABELS[c.plan.classType]}
-                  </span>
+                  {c.academy && c.academy.courses.length > 0 ? (
+                    <select
+                      className="field mt-2 py-1.5 text-[12px] font-normal"
+                      aria-label={`${c.item.ref.name} 비교할 과정`}
+                      value={c.course?.name ?? ''}
+                      onChange={(e) => setCompareCourse(c.item.ref.id, e.target.value || null)}
+                    >
+                      {!c.course && <option value="">과정 선택</option>}
+                      {c.academy.courses.map((course) => (
+                        <option key={`${course.name}|${course.price}`} value={course.name}>
+                          {course.name} · {manwon(course.price)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-2 text-[12px] font-normal text-ink-3">{c.academy ? '교습비 미공개' : '이번 자료에서 찾지 못함'}</p>
+                  )}
                 </th>
               ))}
             </tr>
           </thead>
-          {rows.map((group) => (
-            <tbody key={group.group}>
-              <tr>
-                <th colSpan={columns.length + 1} scope="colgroup" className="bg-surface-2 px-3 py-1.5 text-left text-[12px] font-bold text-ink-2">
-                  {group.group}
-                </th>
-              </tr>
-              {group.items.map((row) => {
-                const best = bestOf(row);
-                return (
-                  <tr key={row.key} className="border-t border-line">
-                    <th scope="row" className="sticky left-0 z-10 bg-surface p-3 text-left align-top font-medium text-ink-2">
-                      {row.label}
-                      {row.hint && <span className="block text-[11px] font-normal text-ink-3">{row.hint}</span>}
-                    </th>
-                    {columns.map((c) => {
-                      const v = row.value(c);
-                      const isBest = v !== null && best !== null && v === best;
-                      return (
-                        <td key={c.academy.id} className={`border-l border-line p-3 align-top ${row.strong ? 'text-[15px] font-bold' : 'font-semibold'}`}>
-                          {v === null ? (
-                            <span className="text-ink-3">-</span>
-                          ) : (
-                            <span className="inline-flex flex-wrap items-center gap-1">
-                              {row.format(v, c)}
-                              {isBest && <span className="price-tag">{row.better === 'low' ? '최저' : '최고'}</span>}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          ))}
-          <tbody>
-            <tr className="border-t border-line">
-              <th scope="row" className="sticky left-0 z-10 bg-surface p-3 text-left align-top font-medium text-ink-2">
-                시세 위치
-              </th>
-              {columns.map((c) => {
-                const peer = peerOf(c, settings.metric);
-                return (
-                  <td key={c.academy.id} className="border-l border-line p-3 align-top">
-                    {peer ? <PriceLevelBadge level={peer.level} /> : <span className="text-ink-3">-</span>}
-                    <span className="mt-1 block text-[11px] text-ink-3">{METRIC_MAP[settings.metric].label} 기준</span>
-                  </td>
-                );
-              })}
-            </tr>
-            <tr className="border-t border-line">
-              <th scope="row" className="sticky left-0 z-10 bg-surface p-3 text-left align-top font-medium text-ink-2">
-                혜택·편의
+          <tbody className="divide-y divide-line">
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                월 신고 교습비
               </th>
               {columns.map((c) => (
-                <td key={c.academy.id} className="border-l border-line p-3 align-top text-[12px] text-ink-2">
-                  <ul className="flex flex-col gap-0.5">
-                    <li>{c.academy.shuttle ? '차량 운행' : '차량 없음'}</li>
-                    <li>{c.academy.trialClass.available ? `체험 ${c.academy.trialClass.price ? won(c.academy.trialClass.price) : '무료'}` : '체험 없음'}</li>
-                    {c.academy.discounts.map((d) => (
-                      <li key={d.id} className={c.cost.appliedDiscounts.some((a) => a.id === d.id) ? 'font-semibold text-cheap' : ''}>
-                        {d.label}
-                      </li>
-                    ))}
-                  </ul>
-                </td>
+                <Cell key={c.item.ref.id} best={minPrice !== null && c.course?.price === minPrice}>
+                  {c.course ? (
+                    <>
+                      <span className="text-[16px] font-bold">{manwon(c.course.price)}</span>
+                      {minPrice !== null && c.course.price === minPrice && <span className="price-tag ml-1 align-middle">최저</span>}
+                    </>
+                  ) : (
+                    '-'
+                  )}
+                </Cell>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                회당 (주 횟수 기준)
+              </th>
+              {columns.map((c) => {
+                const per = c.course ? pricePerSession(c.course) : null;
+                return <Cell key={c.item.ref.id}>{per ? `${unitPrice(per)} · 주 ${c.course!.sessionsPerWeek}회` : <span className="text-ink-3">횟수 정보 없음</span>}</Cell>;
+              })}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                시세 대비
+              </th>
+              {columns.map((c) => (
+                <Cell key={c.item.ref.id}>
+                  {c.position && c.match ? (
+                    <span className="flex flex-col items-start gap-1">
+                      <PriceLevelBadge level={c.position.level} diff={c.position.diffFromMedian} />
+                      <span className="text-[11px] text-ink-3">
+                        {marketScopeName(c.match.row, mode, c.item.ref)} {c.match.row.age ? AGE_LABELS[c.match.row.age] : ''} 중앙값 {manwon(c.match.row.median)} · 하위 {Math.round(c.position.percentile)}%
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-ink-3">{c.course && !isComparableCourse(c.course) ? '비교 제외 과정' : '시세 없음'}</span>
+                  )}
+                </Cell>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                과목 · 대상
+              </th>
+              {columns.map((c) => (
+                <Cell key={c.item.ref.id}>
+                  {c.course?.subjectId ? <SubjectChips subjectIds={[c.course.subjectId]} /> : c.academy?.subjects.length ? <SubjectChips subjectIds={c.academy.subjects} /> : '-'}
+                  {c.course && c.course.ages.length > 0 && <span className="mt-1 block text-[12px] text-ink-2">{c.course.ages.map((a) => AGE_LABELS[a]).join(' · ')}</span>}
+                </Cell>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                종류 · 지역
+              </th>
+              {columns.map((c) => (
+                <Cell key={c.item.ref.id}>
+                  {c.academy ? (
+                    <>
+                      {c.academy.kind} · {c.academy.unassigned ? `${c.academy.sigungu}(구 미상)` : c.academy.sigungu} {c.academy.dong}
+                    </>
+                  ) : (
+                    `${c.item.ref.sigungu}`
+                  )}
+                </Cell>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                정원
+              </th>
+              {columns.map((c) => (
+                <Cell key={c.item.ref.id}>{c.academy?.capacity ? `${c.academy.capacity.toLocaleString()}명` : '-'}</Cell>
+              ))}
+            </tr>
+            <tr>
+              <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
+                설립 · 자료 갱신
+              </th>
+              {columns.map((c) => (
+                <Cell key={c.item.ref.id}>
+                  {c.academy ? (
+                    <>
+                      {c.academy.established ? dotDate(c.academy.established) : '-'}
+                      <span className="block text-[11px] text-ink-3">교육청 갱신 {c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}</span>
+                    </>
+                  ) : (
+                    '-'
+                  )}
+                </Cell>
               ))}
             </tr>
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[12px] text-ink-3">표가 넓으면 옆으로 밀어서 보세요. 노란 표시는 항목별 가장 유리한 값이에요.</p>
 
-      <Section title="1년 비용 구성" desc="같은 길이 기준으로 어디에 돈이 드는지 비교">
-        <div className="card p-4">
-          <CostStack
-            format={manwon}
-            segmentLabels={['수강료', '매월 부대비용', '정기 비용', '초기 비용']}
-            rows={byAnnual.map((c, i) => ({
-              key: c.academy.id,
-              label: c.academy.name,
-              best: i === 0 && columns.length > 1,
-              segments: [c.cost.annualTotal - c.cost.monthlyFees * 12 - c.cost.periodicAnnual - c.cost.oneTime, c.cost.monthlyFees * 12, c.cost.periodicAnnual, c.cost.oneTime],
-            }))}
-          />
-        </div>
-      </Section>
-
-      {columns.length < MAX_COMPARE && (
-        <Link to="/search" className="btn-ghost mt-4 w-full">
-          학원 더 담기 ({MAX_COMPARE - columns.length}곳 가능)
-        </Link>
+      {priced.length > 1 && (
+        <Section title="월 신고 교습비" desc="낮은 순">
+          <div className="card p-4">
+            <HBarList
+              format={manwon}
+              items={[...priced]
+                .sort((a, b) => a.course!.price - b.course!.price)
+                .map((c) => ({
+                  key: c.item.ref.id,
+                  label: c.item.ref.name,
+                  value: c.course!.price,
+                  sub: SUBJECT_MAP[c.course!.subjectId ?? '']?.name,
+                  highlight: c.course!.price === minPrice,
+                }))}
+            />
+          </div>
+        </Section>
       )}
+
+      <p className="mt-6 text-[12px] text-ink-3">신고 교습비는 학원이 교육청에 신고한 1인 월 금액이에요. 교재비·차량비·할인은 포함되지 않아요.</p>
     </div>
   );
 }

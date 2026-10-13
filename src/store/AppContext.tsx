@@ -1,44 +1,52 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { DiscountType, PriceReport } from '../types';
 import { findDistrict } from '../data/regions';
-import type { Metric } from '../lib/pricing';
-import { load, save } from './storage';
+import type { AcademyRef, AgeGroup } from '../types';
+import { load, remove, save } from './storage';
 
+/** 찜한 학원: 목록에서 바로 보여 줄 수 있게 이름·동·종류를 함께 저장한다 */
+export interface FavoriteItem extends AcademyRef {
+  dong: string;
+  kind: string;
+  subjects: string[];
+  addedAt: string;
+}
+
+/** 비교함: 학원 + 비교할 과정 이름 (교습비가 없으면 null) */
 export interface CompareItem {
-  academyId: string;
-  planId: string;
+  ref: AcademyRef;
+  course: string | null;
 }
 
-export interface CustomCalcEntry {
-  name: string;
-  monthly: number;
-  monthlyExtras: number;
-  oneTime: number;
-}
-
+/** 내 학원비 항목. 교육청 자료에서 고른 과정이거나 직접 입력한 금액 */
 export interface CalcItem {
   id: string;
   /** 자녀(또는 본인) 이름 – 합계를 사람별로 나눠 보여준다 */
   person: string;
-  academyId?: string;
-  planId?: string;
-  custom?: CustomCalcEntry;
-  discounts: DiscountType[];
-  includeOptional: boolean;
+  name: string;
+  /** 실제로 내는 월 금액 */
+  monthly: number;
+  subjectId: string | null;
+  age: AgeGroup | null;
+  /** 시세 비교 기준 지역 */
+  sido: string;
+  sigungu: string;
+  ref?: AcademyRef;
+  course?: string;
+  /** 교육청 신고 교습비 (고를 때 기준) */
+  reportedPrice?: number;
 }
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
 export interface Settings {
-  metric: Metric;
   home: { sido: string; sigungu: string } | null;
+  /** 정적 데이터가 없을 때(로컬 실행 등) 브라우저에서 교육청 자료를 직접 받는 데 쓰는 인증키 */
   neisKey: string;
   theme: ThemePref;
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  metric: 'effectiveMonthly',
-  home: { sido: '서울', sigungu: '강남구' },
+  home: null,
   neisKey: '',
   theme: 'system',
 };
@@ -46,14 +54,14 @@ const DEFAULT_SETTINGS: Settings = {
 export const MAX_COMPARE = 4;
 
 interface AppContextValue {
-  favorites: string[];
-  toggleFavorite: (academyId: string) => void;
+  favorites: FavoriteItem[];
+  toggleFavorite: (item: Omit<FavoriteItem, 'addedAt'>) => boolean;
   isFavorite: (academyId: string) => boolean;
 
   compare: CompareItem[];
   addCompare: (item: CompareItem) => 'added' | 'updated' | 'full';
   removeCompare: (academyId: string) => void;
-  setComparePlan: (academyId: string, planId: string) => void;
+  setCompareCourse: (academyId: string, course: string | null) => void;
   clearCompare: () => void;
   inCompare: (academyId: string) => boolean;
 
@@ -62,18 +70,18 @@ interface AppContextValue {
   updateCalc: (id: string, patch: Partial<CalcItem>) => void;
   removeCalc: (id: string) => void;
 
-  reports: PriceReport[];
-  addReport: (report: Omit<PriceReport, 'id' | 'createdAt'>) => void;
-  removeReport: (id: string) => void;
-
   settings: Settings;
   updateSettings: (patch: Partial<Settings>) => void;
+  resetAll: () => void;
 
   toast: string | null;
   showToast: (message: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+// 예시 데이터를 쓰던 때의 저장값(가짜 학원 id)은 더는 의미가 없어 지운다.
+const LEGACY_KEYS = ['favorites', 'compare', 'calc', 'reports'];
 
 function usePersistent<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T>(() => load(key, fallback));
@@ -88,15 +96,15 @@ function newId(prefix: string): string {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [favorites, setFavorites] = usePersistent<string[]>('favorites', []);
-  const [compare, setCompare] = usePersistent<CompareItem[]>('compare', []);
-  const [calc, setCalc] = usePersistent<CalcItem[]>('calc', []);
-  const [reports, setReports] = usePersistent<PriceReport[]>('reports', []);
+  useState(() => LEGACY_KEYS.forEach(remove));
+  const [favorites, setFavorites] = usePersistent<FavoriteItem[]>('v2:favorites', []);
+  const [compare, setCompare] = usePersistent<CompareItem[]>('v2:compare', []);
+  const [calc, setCalc] = usePersistent<CalcItem[]>('v2:calc', []);
   const [storedSettings, setSettings] = usePersistent<Settings>('settings', DEFAULT_SETTINGS);
   const settings = useMemo(() => {
-    const merged = { ...DEFAULT_SETTINGS, ...storedSettings };
-    // 지역 목록이 바뀌어 저장된 동네가 더는 없으면 기본값으로 되돌린다
-    if (merged.home && !findDistrict(merged.home.sido, merged.home.sigungu)) merged.home = DEFAULT_SETTINGS.home;
+    const merged: Settings = { home: storedSettings.home ?? null, neisKey: storedSettings.neisKey ?? '', theme: storedSettings.theme ?? 'system' };
+    // 지역 목록이 바뀌어 저장된 동네가 더는 없으면 비운다
+    if (merged.home && !findDistrict(merged.home.sido, merged.home.sigungu)) merged.home = null;
     return merged;
   }, [storedSettings]);
   const [toast, setToast] = useState<string | null>(null);
@@ -116,15 +124,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleFavorite = useCallback(
-    (academyId: string) =>
-      setFavorites((prev) => (prev.includes(academyId) ? prev.filter((x) => x !== academyId) : [academyId, ...prev])),
-    [setFavorites],
+    (item: Omit<FavoriteItem, 'addedAt'>) => {
+      const exists = favorites.some((f) => f.id === item.id);
+      setFavorites((prev) => (exists ? prev.filter((f) => f.id !== item.id) : [{ ...item, addedAt: new Date().toISOString().slice(0, 10) }, ...prev]));
+      return !exists;
+    },
+    [favorites, setFavorites],
   );
 
   const addCompare = useCallback(
     (item: CompareItem): 'added' | 'updated' | 'full' => {
-      if (compare.some((c) => c.academyId === item.academyId)) {
-        setCompare((prev) => prev.map((c) => (c.academyId === item.academyId ? item : c)));
+      if (compare.some((c) => c.ref.id === item.ref.id)) {
+        setCompare((prev) => prev.map((c) => (c.ref.id === item.ref.id ? item : c)));
         return 'updated';
       }
       if (compare.length >= MAX_COMPARE) return 'full';
@@ -137,28 +148,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppContextValue = {
     favorites,
     toggleFavorite,
-    isFavorite: (id) => favorites.includes(id),
+    isFavorite: (id) => favorites.some((f) => f.id === id),
 
     compare,
     addCompare,
-    removeCompare: (id) => setCompare((prev) => prev.filter((c) => c.academyId !== id)),
-    setComparePlan: (academyId, planId) =>
-      setCompare((prev) => prev.map((c) => (c.academyId === academyId ? { academyId, planId } : c))),
+    removeCompare: (id) => setCompare((prev) => prev.filter((c) => c.ref.id !== id)),
+    setCompareCourse: (id, course) => setCompare((prev) => prev.map((c) => (c.ref.id === id ? { ...c, course } : c))),
     clearCompare: () => setCompare([]),
-    inCompare: (id) => compare.some((c) => c.academyId === id),
+    inCompare: (id) => compare.some((c) => c.ref.id === id),
 
     calc,
     addCalc: (item) => setCalc((prev) => [...prev, { ...item, id: newId('calc') }]),
     updateCalc: (id, patch) => setCalc((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c))),
     removeCalc: (id) => setCalc((prev) => prev.filter((c) => c.id !== id)),
 
-    reports,
-    addReport: (report) =>
-      setReports((prev) => [{ ...report, id: newId('report'), createdAt: new Date().toISOString().slice(0, 10) }, ...prev]),
-    removeReport: (id) => setReports((prev) => prev.filter((r) => r.id !== id)),
-
     settings,
     updateSettings: (patch) => setSettings((prev) => ({ ...DEFAULT_SETTINGS, ...prev, ...patch })),
+    resetAll: () => {
+      setFavorites([]);
+      setCompare([]);
+      setCalc([]);
+      setSettings(DEFAULT_SETTINGS);
+    },
 
     toast,
     showToast,

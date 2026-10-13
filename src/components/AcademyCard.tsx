@@ -1,131 +1,123 @@
-import { Heart, MapPin, Plus, Check } from 'lucide-react';
+import { Check, Heart, MapPin, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { CLASS_TYPE_LABELS } from '../data/categories';
-import { formatMetric, km, manwon, unitPrice } from '../lib/format';
-import { METRIC_MAP, scheduleLabel, type Metric } from '../lib/pricing';
-import type { SearchResult } from '../lib/search';
+import { AGE_LABELS } from '../data/categories';
+import { manwon } from '../lib/format';
+import type { RealAcademy } from '../lib/realData';
+import { marketScopeName, type SearchHit } from '../lib/realSearch';
+import type { DataMode } from '../data/source';
 import { useApp } from '../store/AppContext';
-import { PriceLevelBadge, SourceBadge, Stars, SubjectChips, SubjectTile } from './ui';
+import type { AcademyRef } from '../types';
+import { KindBadge, PriceLevelBadge, SubjectChips, SubjectTile } from './ui';
 
-interface Props {
-  result: Pick<SearchResult, 'academy' | 'plan' | 'cost' | 'value' | 'peer'> & Partial<Pick<SearchResult, 'matchingPlans' | 'distanceKm'>>;
-  metric: Metric;
-  cheapest?: boolean;
+export function academyPath(ref: Pick<AcademyRef, 'id' | 'sido' | 'sigungu'>, course?: string | null): string {
+  const base = `/academy/${encodeURIComponent(ref.sido)}/${encodeURIComponent(ref.sigungu)}/${encodeURIComponent(ref.id)}`;
+  return course ? `${base}?course=${encodeURIComponent(course)}` : base;
 }
 
-/** 다른 기준 두 개를 보조로 보여준다 (주 기준과 겹치지 않게) */
-function secondaryMetrics(metric: Metric): Metric[] {
-  const order: Metric[] = ['monthlyTuition', 'pricePerHour', 'effectiveMonthly', 'firstPayment'];
-  return order.filter((m) => m !== metric).slice(0, 2);
+export function refOf(academy: RealAcademy, region: { sido: string; sigungu: string }): AcademyRef {
+  return { id: academy.id, sido: region.sido, sigungu: region.sigungu, name: academy.name };
 }
 
-export function AcademyCard({ result, metric, cheapest = false }: Props) {
-  const { academy, plan, cost, value, peer } = result;
+/** 찜·비교 버튼 (카드·상세 공용) */
+export function useAcademyActions(academy: RealAcademy, region: { sido: string; sigungu: string }) {
   const { toggleFavorite, isFavorite, addCompare, inCompare, removeCompare, showToast } = useApp();
-  const fav = isFavorite(academy.id);
-  const comparing = inCompare(academy.id);
-
-  const onCompare = () => {
-    if (comparing) {
+  const ref = refOf(academy, region);
+  return {
+    fav: isFavorite(academy.id),
+    comparing: inCompare(academy.id),
+    onFavorite: () => {
+      const added = toggleFavorite({ ...ref, dong: academy.dong, kind: academy.kind, subjects: academy.subjects });
+      showToast(added ? '찜했어요' : '찜을 해제했어요');
+    },
+    onCompare: (course: string | null) => {
+      const r = addCompare({ ref, course });
+      showToast(r === 'full' ? '비교함은 최대 4곳까지 담을 수 있어요' : r === 'updated' ? '비교할 과정을 바꿨어요' : '비교함에 담았어요');
+    },
+    removeCompare: () => {
       removeCompare(academy.id);
       showToast('비교함에서 뺐어요');
-      return;
-    }
-    const r = addCompare({ academyId: academy.id, planId: plan.id });
-    showToast(r === 'full' ? '비교함은 최대 4곳까지 담을 수 있어요' : `비교함에 담았어요 · ${plan.name}`);
+    },
   };
+}
+
+export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { sido: string; sigungu: string }; mode: DataMode }) {
+  const { academy, best, courses, level, diffFromMedian, market } = hit;
+  const actions = useAcademyActions(academy, region);
+  const tileSubject = best?.subjectId ?? academy.subjects[0];
 
   return (
     <article className="card relative flex flex-col gap-3 p-4 transition-shadow hover:shadow-md">
       <div className="flex items-start gap-3">
-        <SubjectTile subjectId={plan.subjectId} />
+        {tileSubject ? (
+          <SubjectTile subjectId={tileSubject} />
+        ) : (
+          <span aria-hidden="true" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-[13px] font-bold text-ink-3">
+            {academy.kind === '교습소' ? '교습' : '학원'}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
-          <h3 className="pr-8 text-[16px] font-bold leading-snug">
-            <Link to={`/academy/${academy.id}?plan=${plan.id}`} className="after:absolute after:inset-0 after:rounded-card hover:text-accent">
+          <h3 className="pr-16 text-[16px] font-bold leading-snug">
+            <Link to={academyPath(refOf(academy, region), best?.name)} className="after:absolute after:inset-0 after:rounded-card hover:text-accent">
               {academy.name}
             </Link>
           </h3>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-3">
-            <SubjectChips subjectIds={academy.subjectIds} />
+            <KindBadge kind={academy.kind} />
             <span className="inline-flex items-center gap-0.5">
               <MapPin aria-hidden="true" className="h-3 w-3" />
-              {academy.region.sigungu} {academy.region.dong}
-              {result.distanceKm != null && <b className="ml-1 font-semibold text-ink-2">{km(result.distanceKm)}</b>}
+              {academy.unassigned ? `${academy.sigungu}(구 미상)` : academy.sigungu} {academy.dong}
             </span>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Stars value={academy.rating} count={academy.reviewCount} />
-            <SourceBadge source={academy.priceSource} />
-            {academy.isPublic && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">공공시설</span>}
+            {academy.subjects.length > 0 && <SubjectChips subjectIds={academy.subjects.slice(0, 4)} />}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            toggleFavorite(academy.id);
-            showToast(fav ? '찜을 해제했어요' : '찜한 학원에 추가했어요');
-          }}
-          aria-pressed={fav}
-          aria-label={fav ? '찜 해제' : '찜하기'}
-          className="absolute right-3 top-3 z-10 rounded-full p-2 text-ink-3 hover:bg-surface-2"
-        >
-          <Heart className={`h-5 w-5 ${fav ? 'fill-pricey text-pricey' : ''}`} />
-        </button>
       </div>
 
-      <div className="rounded-xl bg-surface-2 px-3 py-2.5">
-        <div className="flex items-baseline justify-between gap-2 text-[12px] text-ink-2">
-          <span className="min-w-0 truncate font-medium text-ink">{plan.name}</span>
-          {result.matchingPlans && result.matchingPlans > 1 ? <span className="shrink-0 text-ink-3">외 {result.matchingPlans - 1}개 요금제</span> : null}
-        </div>
-        <div className="mt-0.5 text-[12px] text-ink-3">
-          {scheduleLabel(plan)} · {CLASS_TYPE_LABELS[plan.classType]}
-          {plan.classType !== 'private' && ` ${plan.maxStudents}명`}
-        </div>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
-          <div>
-            <div className="text-[11px] font-semibold text-ink-3">{METRIC_MAP[metric].label}</div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[22px] font-bold leading-tight tracking-tight">{formatMetric(metric, value)}</span>
-              {cheapest && <span className="price-tag">최저가</span>}
+      {best ? (
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] text-ink-3" title={best.name}>
+              {best.name}
+              {best.ages.length > 0 && ` · ${best.ages.map((a) => AGE_LABELS[a]).join('·')}`}
+            </p>
+            <p className="num text-[20px] font-bold leading-tight tracking-tight">
+              {manwon(best.price)}
+              <span className="ml-1 text-[12px] font-medium text-ink-3">/ 월 신고 교습비</span>
+            </p>
+            {courses.length > 1 && <p className="text-[12px] text-ink-3">맞는 과정 {courses.length}개 · 최고 {manwon(courses[courses.length - 1].price)}</p>}
+          </div>
+          {level && diffFromMedian !== null && market && (
+            <div className="flex flex-col items-end gap-0.5">
+              <PriceLevelBadge level={level} diff={diffFromMedian} />
+              <span className="text-[11px] text-ink-3">
+                {marketScopeName(market.row, mode, region)}{market.row.age ? ` ${AGE_LABELS[market.row.age]}` : ''} 중앙값 {manwon(market.row.median)}
+              </span>
             </div>
-          </div>
-          <dl className="num flex gap-3 text-right text-[12px]">
-            {secondaryMetrics(metric).map((m) => (
-              <div key={m}>
-                <dt className="text-ink-3">{METRIC_MAP[m].short}</dt>
-                <dd className="font-semibold text-ink-2">
-                  {m === 'pricePerHour' || m === 'pricePerSession' ? unitPrice(cost[m]) : manwon(cost[m])}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          )}
         </div>
-      </div>
+      ) : (
+        <p className="text-[13px] text-ink-3">
+          {academy.courses.length === 0 ? '교육청 자료에 교습비가 공개되지 않았어요' : '비교할 수 있는 월 교습비가 없어요 (특강·1:1·재료비 등만 신고)'}
+        </p>
+      )}
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap gap-1">
-          {peer && <PriceLevelBadge level={peer.level} diff={peer.diffFromMedian} />}
-          {academy.discounts.length > 0 && (
-            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">할인 {academy.discounts.length}</span>
-          )}
-          {academy.shuttle && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">차량</span>}
-          {academy.trialClass.available && (
-            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">
-              {academy.trialClass.price ? '체험' : '무료체험'}
-            </span>
-          )}
-        </div>
+      <div className="absolute right-3 top-3 z-10 flex gap-1">
         <button
           type="button"
-          onClick={onCompare}
-          aria-pressed={comparing}
-          className={`relative z-10 inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors ${
-            comparing ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'
-          }`}
+          onClick={actions.onFavorite}
+          aria-pressed={actions.fav}
+          aria-label={actions.fav ? `${academy.name} 찜 해제` : `${academy.name} 찜하기`}
+          className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2"
         >
-          {comparing ? <Check aria-hidden="true" className="h-3.5 w-3.5" /> : <Plus aria-hidden="true" className="h-3.5 w-3.5" />}
-          {comparing ? '비교 중' : '비교'}
+          <Heart aria-hidden="true" className={`h-5 w-5 ${actions.fav ? 'fill-pricey text-pricey' : ''}`} />
+        </button>
+        <button
+          type="button"
+          onClick={() => (actions.comparing ? actions.removeCompare() : actions.onCompare(best?.name ?? null))}
+          aria-pressed={actions.comparing}
+          aria-label={actions.comparing ? `${academy.name} 비교함에서 빼기` : `${academy.name} 비교함에 담기`}
+          className={`rounded-lg p-1.5 hover:bg-surface-2 ${actions.comparing ? 'text-accent' : 'text-ink-3'}`}
+        >
+          {actions.comparing ? <Check aria-hidden="true" className="h-5 w-5" /> : <Plus aria-hidden="true" className="h-5 w-5" />}
         </button>
       </div>
     </article>

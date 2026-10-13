@@ -27,6 +27,24 @@ describe('원자료 → 정적 데이터', () => {
     const market = files.get('market.json') as { rows: { sigungu: string; median: number }[] };
     expect(market.rows.some((r) => r.sigungu === '강남구' && r.median === 300000)).toBe(true);
     expect(files.get('manifest.json')).toBe(manifest as DataManifest);
+    // 파일 주소의 ?v= 에 쓰는 내용 해시
+    expect(Object.keys(manifest.versions!).sort()).toEqual(['b/' + stableName('경기|성남시') + '.json', 'd/11680.json', 'market.json'].sort());
+    expect(manifest.versions!['d/11680.json']).toBe(stableName(JSON.stringify(files.get('d/11680.json'))));
+  });
+
+  it('같은 원자료를 다시 가공하면 내용이 바뀐 파일만 버전이 바뀐다', () => {
+    const seoul = raw({ ACA_NM: '가', PSNBY_THCC_CNTNT: '중등수학:200000' });
+    const bucket = raw({ ATPT_OFCDC_SC_CODE: 'J10', ADMST_ZONE_NM: '성남시', FA_RDNMA: '경기도 성남시 어딘가로 1', FA_RDNDA: '' });
+    const build = (price: number) =>
+      buildOutput(snap([
+        { code: 'B10', total: 1, rows: [{ ...seoul, PSNBY_THCC_CNTNT: `중등수학:${price}` }] },
+        { code: 'J10', total: 1, rows: [bucket] },
+      ])).manifest.versions!;
+    const a = build(200000);
+    const b = build(250000);
+    expect(b['d/11680.json']).not.toBe(a['d/11680.json']);
+    const bucketFile = 'b/' + stableName('경기|성남시') + '.json';
+    expect(b[bucketFile]).toBe(a[bucketFile]);
   });
 
   it('구 미상 파일 이름은 주마다 바뀌지 않는다', () => {

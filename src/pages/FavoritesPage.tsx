@@ -6,7 +6,7 @@ import { dotDate } from '../lib/format';
 import { useApp } from '../store/AppContext';
 
 export function FavoritesPage() {
-  const { favorites, toggleFavorite, showToast } = useApp();
+  const { favorites, toggleFavorite, restoreFavorite, showToast } = useApp();
   return (
     <div>
       <PageHeader title="찜한 학원" subtitle={favorites.length ? `${favorites.length}곳` : undefined} back />
@@ -22,7 +22,7 @@ export function FavoritesPage() {
         />
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2">
-          {favorites.map((f) => (
+          {favorites.map((f, i) => (
             <li key={f.id} className="card relative flex items-start gap-3 p-4">
               <div className="min-w-0 flex-1">
                 <Link to={academyPath(f)} className="text-[16px] font-bold after:absolute after:inset-0 after:rounded-card hover:text-accent">
@@ -44,7 +44,7 @@ export function FavoritesPage() {
                 aria-label={`${f.name} 찜 해제`}
                 onClick={() => {
                   toggleFavorite(f);
-                  showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => toggleFavorite(f) });
+                  showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => restoreFavorite(f, i) });
                 }}
               >
                 <Heart aria-hidden="true" className="h-5 w-5 fill-pricey" />

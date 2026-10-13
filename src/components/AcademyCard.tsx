@@ -25,16 +25,18 @@ export function placeOf(academy: RealAcademy): string {
 
 /** 찜·비교 버튼 (카드·상세 공용) */
 export function useAcademyActions(academy: RealAcademy, region: { sido: string; sigungu: string }) {
-  const { toggleFavorite, isFavorite, addCompare, inCompare, removeCompare, showToast, compare } = useApp();
+  const { favorites, toggleFavorite, restoreFavorite, isFavorite, addCompare, inCompare, removeCompare, restoreCompare, showToast, compare } = useApp();
   const ref = refOf(academy, region);
   return {
     fav: isFavorite(academy.id),
     comparing: inCompare(academy.id),
     onFavorite: () => {
       const item = { ...ref, dong: academy.dong, place: placeOf(academy), kind: academy.kind, subjects: academy.subjects };
+      const index = favorites.findIndex((f) => f.id === academy.id);
+      const prev = favorites[index];
       const added = toggleFavorite(item);
-      if (added) showToast('찜했어요');
-      else showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => toggleFavorite(item) });
+      if (added || !prev) showToast('찜했어요');
+      else showToast('찜을 해제했어요', { label: '되돌리기', onClick: () => restoreFavorite(prev, index) });
     },
     /** course: 과정 키 (courseKey) */
     onCompare: (course: string | null) => {
@@ -44,7 +46,7 @@ export function useAcademyActions(academy: RealAcademy, region: { sido: string; 
     removeCompare: () => {
       const prev = compare.find((c) => c.ref.id === academy.id);
       removeCompare(academy.id);
-      showToast('비교함에서 뺐어요', prev ? { label: '되돌리기', onClick: () => addCompare(prev) } : undefined);
+      showToast('비교함에서 뺐어요', prev ? { label: '되돌리기', onClick: () => restoreCompare([prev]) } : undefined);
     },
   };
 }

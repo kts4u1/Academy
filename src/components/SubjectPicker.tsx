@@ -26,6 +26,15 @@ export function SubjectPicker({ value, onChange }: { value: string; onChange: (s
   const [open, setOpen] = useState(false);
   const groups = GROUPS.filter((g) => g.id !== 'sports');
   const rowRef = useRef<HTMLDivElement>(null);
+  // 양쪽 끝에 더 있으면 흐리게 표시한다
+  const [edges, setEdges] = useState({ start: false, end: true });
+  const updateEdges = () => {
+    const row = rowRef.current;
+    if (!row) return;
+    const start = row.scrollLeft > 4;
+    const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 4;
+    setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+  };
   // 고른 과목이 한 줄 목록 밖에 있으면 보이게 옮긴다 (홈에서 '연기'를 눌러 들어온 경우 등)
   useEffect(() => {
     const row = rowRef.current;
@@ -68,13 +77,14 @@ export function SubjectPicker({ value, onChange }: { value: string; onChange: (s
             <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
           <div className="relative min-w-0 flex-1">
-            <div ref={rowRef} className="scroll-x relative mx-0 px-0 pr-6" role="group" aria-label="과목 빠르게 고르기">
+            <div ref={rowRef} onScroll={updateEdges} className="scroll-x relative mx-0 px-0 pr-6" role="group" aria-label="과목 빠르게 고르기">
               {groups.flatMap((g) => subjectsOf(g.id)).map((s) => (
                 <Chip key={s.id} id={s.id} pressed={value === s.id} onClick={() => onChange(value === s.id ? null : s.id)} />
               ))}
             </div>
             {/* 더 있다는 표시 */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-bg to-transparent" />
+            {edges.start && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-bg to-transparent" />}
+            {edges.end && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-bg to-transparent" />}
           </div>
         </div>
       </div>

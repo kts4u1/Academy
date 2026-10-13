@@ -106,7 +106,7 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
 }
 
 export function ComparePage() {
-  const { compare, removeCompare, clearCompare, setCompareCourse, addCompare, showToast } = useApp();
+  const { compare, removeCompare, clearCompare, setCompareCourse, restoreCompare, showToast } = useApp();
   const { states, loading, reload } = useDistricts(compare.map((c) => c.ref));
   const datas = Array.from(states.values()).map((s) => s.data);
   const market = useMarket(datas);
@@ -114,12 +114,12 @@ export function ComparePage() {
   const removeWithUndo = (id: string) => {
     const prev = compare.find((c) => c.ref.id === id);
     removeCompare(id);
-    if (prev) showToast('비교함에서 뺐어요', { label: '되돌리기', onClick: () => addCompare(prev) });
+    if (prev) showToast('비교함에서 뺐어요', { label: '되돌리기', onClick: () => restoreCompare([prev]) });
   };
   const clearWithUndo = () => {
     const prev = compare;
     clearCompare();
-    showToast(`비교함을 비웠어요 (${prev.length}곳)`, { label: '되돌리기', onClick: () => prev.forEach((c) => addCompare(c)) });
+    showToast(`비교함을 비웠어요 (${prev.length}곳)`, { label: '되돌리기', onClick: () => restoreCompare(prev) });
   };
 
   if (compare.length === 0) {

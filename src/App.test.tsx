@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type { DataManifest } from './data/manifest';
@@ -94,5 +94,50 @@ describe('App', () => {
     window.location.hash = '#/search?sido=서울&sigungu=강남구&subject=swim';
     render(<App />);
     expect(await screen.findByRole('heading', { name: /수영은\(는\) 교육청 자료에 없어요/ })).toBeInTheDocument();
+  });
+
+  it('되돌리기: 지운 찜·비교함·내 학원비를 원래 자리에 그대로 되살린다', async () => {
+    serve(true);
+    const stored = (key: string) => JSON.parse(window.localStorage.getItem(`hakwon-compare:v2:${key}`) ?? '[]') as { id?: string; ref?: { id: string }; addedAt?: string }[];
+    const ref = (i: number) => ({ id: gangnam[i].id, sido: '서울', sigungu: '강남구', name: gangnam[i].name });
+
+    // 찜 해제 → 되돌리기: 같은 자리, 찜한 날짜 그대로
+    const fav = (i: number, addedAt: string) => ({ ...ref(i), dong: gangnam[i].dong, kind: gangnam[i].kind, subjects: gangnam[i].subjects, addedAt });
+    window.localStorage.setItem('hakwon-compare:v2:favorites', JSON.stringify([fav(0, '2026-10-01'), fav(1, '2026-10-02')]));
+    window.location.hash = '#/favorites';
+    let view = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '개포영어교습소 찜 해제' }));
+    expect(stored('favorites')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(stored('favorites').map((f) => [f.id, f.addedAt])).toEqual([
+      [gangnam[0].id, '2026-10-01'],
+      [gangnam[1].id, '2026-10-02'],
+    ]);
+    view.unmount();
+
+    // 비교함 비우기·빼기 → 되돌리기
+    window.localStorage.setItem('hakwon-compare:v2:compare', JSON.stringify([{ ref: ref(0), course: null }, { ref: ref(1), course: null }]));
+    window.location.hash = '#/compare';
+    view = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '비우기' }));
+    expect(stored('compare')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(stored('compare').map((c) => c.ref!.id)).toEqual([gangnam[0].id, gangnam[1].id]);
+    fireEvent.click((await screen.findAllByRole('button', { name: '대치영어교습소 빼기' }))[0]);
+    expect(stored('compare')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(stored('compare').map((c) => c.ref!.id)).toEqual([gangnam[0].id, gangnam[1].id]);
+    view.unmount();
+
+    // 내 학원비 삭제 → 되돌리기: 같은 id, 같은 자리
+    const item = (id: string, name: string) => ({ id, person: '첫째', name, monthly: 100000, subjectId: null, age: null, sido: '서울', sigungu: '강남구' });
+    window.localStorage.setItem('hakwon-compare:v2:calc', JSON.stringify([item('c1', '동네 수영장'), item('c2', '수학 과외')]));
+    window.location.hash = '#/budget';
+    view = render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '동네 수영장 삭제' }));
+    expect(stored('calc').map((c) => c.id)).toEqual(['c2']);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    expect(stored('calc').map((c) => c.id)).toEqual(['c1', 'c2']);
+    view.unmount();
   });
 });

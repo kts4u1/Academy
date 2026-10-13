@@ -34,11 +34,31 @@ function readFilters(params: URLSearchParams): SearchFilters & { sort: SortKey }
   };
 }
 
+/** '더 보기'로 늘린 개수를 검색 조건별로 기억해, 학원을 보고 돌아와도 보던 자리까지 목록이 남게 한다 */
+function readLimit(key: string): number {
+  try {
+    const n = Number(sessionStorage.getItem(key));
+    return Number.isFinite(n) && n > PAGE ? n : PAGE;
+  } catch {
+    return PAGE;
+  }
+}
+
 function Results({ data, filters, sort, onSort }: { data: DistrictData; filters: SearchFilters; sort: SortKey; onSort: (s: SortKey) => void }) {
   const market = useMarket([data]);
   const hits = useMemo(() => searchAcademies(data, filters, market.rows, sort), [data, filters, market.rows, sort]);
-  const [limit, setLimit] = useState(PAGE);
-  useEffect(() => setLimit(PAGE), [data, filters, sort]);
+  const limitKey = `search-limit:${data.sido}|${data.sigungu}|${JSON.stringify(filters)}|${sort}`;
+  const [shown, setShown] = useState(() => ({ key: limitKey, n: readLimit(limitKey) }));
+  const limit = shown.key === limitKey ? shown.n : readLimit(limitKey);
+  const showMore = () => {
+    const n = limit + PAGE;
+    setShown({ key: limitKey, n });
+    try {
+      sessionStorage.setItem(limitKey, String(n));
+    } catch {
+      // 저장이 막힌 브라우저에서는 이번 화면에서만 늘린다
+    }
+  };
   const priced = hits.filter((h) => h.rep);
   // 시세와 같은 기준: 학원마다 대표 과정 금액 하나
   const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => (h.rep ? [h.rep.price] : [])) : []), [hits, filters.subject]);
@@ -106,7 +126,7 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
             ))}
           </ul>
           {hits.length > limit && (
-            <button type="button" className="btn-ghost mt-4 w-full" onClick={() => setLimit((n) => n + PAGE)}>
+            <button type="button" className="btn-ghost mt-4 w-full" onClick={showMore}>
               더 보기 ({(hits.length - limit).toLocaleString()}곳 남음)
             </button>
           )}

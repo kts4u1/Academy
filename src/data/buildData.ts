@@ -93,6 +93,10 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
 
   const market = buildMarket(all);
   files.set('market.json', { updatedAt: snap.fetchedAt, rows: market });
+  // 파일 내용으로 버전을 붙인다: 같은 원자료를 새 코드로 다시 가공해 내용이 바뀌면 주소도 바뀌고,
+  // 매주 받아도 내용이 같은 파일은 휴대폰에 보관해 둔 것을 그대로 쓴다
+  const versions: Record<string, string> = {};
+  for (const [file, data] of files) versions[file] = stableName(JSON.stringify(data));
   const manifest: DataManifest = {
     version: 2,
     updatedAt: snap.fetchedAt,
@@ -115,6 +119,7 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
     offices: officeStats,
     districts,
     buckets,
+    versions,
   };
   files.set('manifest.json', manifest);
   return { manifest, files };

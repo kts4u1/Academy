@@ -109,7 +109,7 @@ function CustomForm({ onAdd, people }: { onAdd: (item: Omit<CalcItem, 'id'>) => 
 }
 
 export function BudgetPage() {
-  const { calc, addCalc, updateCalc, removeCalc, showToast } = useApp();
+  const { calc, addCalc, updateCalc, removeCalc, restoreCalc, showToast } = useApp();
   const availability = useAvailability();
   // 정적 데이터면 시세 파일만 쓰고, 브라우저에서 받는 경우에만 항목 지역 데이터를 받는다
   const { states } = useDistricts(availability.mode === 'live' ? calc.filter((c) => c.sido && c.subjectId).map((c) => ({ sido: c.sido, sigungu: c.sigungu })) : []);
@@ -183,12 +183,11 @@ export function BudgetPage() {
                           <button
                             type="button"
                             onClick={() => {
+                              const index = calc.findIndex((c) => c.id === item.id);
                               removeCalc(item.id);
-                              const { id: _id, ...rest } = item;
-                              void _id;
-                              showToast('삭제했어요', { label: '되돌리기', onClick: () => addCalc(rest) });
+                              showToast('삭제했어요', { label: '되돌리기', onClick: () => restoreCalc(item, index) });
                             }}
-                            className="-mr-1 -mt-1 rounded-lg p-2.5 text-ink-3 hover:bg-surface-2"
+                            className="-mr-2 -mt-2 rounded-lg p-3 text-ink-3 hover:bg-surface-2"
                             aria-label={`${item.name} 삭제`}
                           >
                             <Trash aria-hidden="true" className="h-4 w-4" />

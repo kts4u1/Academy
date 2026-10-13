@@ -25,4 +25,6 @@ export interface DataManifest {
   offices: { code: string; sido: string; total: number; fetched: number; kept: number }[];
   districts: { sido: string; sigungu: string; code: string; file: string | null; academies: number; priced: number }[];
   buckets: { sido: string; name: string; file: string; academies: number; priced: number }[];
+  /** 파일별 내용 해시 (주소의 ?v= 에 쓴다). 없으면 갱신 시각을 쓴다 */
+  versions?: Record<string, string>;
 }

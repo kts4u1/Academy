@@ -70,6 +70,8 @@ export const MAX_COMPARE = 4;
 interface AppContextValue {
   favorites: FavoriteItem[];
   toggleFavorite: (item: Omit<FavoriteItem, 'addedAt'>) => boolean;
+  /** 되돌리기: 지운 찜을 원래 자리에 그대로(찜한 날짜 포함) 다시 넣는다 */
+  restoreFavorite: (item: FavoriteItem, index: number) => void;
   isFavorite: (academyId: string) => boolean;
 
   compare: CompareItem[];
@@ -77,12 +79,16 @@ interface AppContextValue {
   removeCompare: (academyId: string) => void;
   setCompareCourse: (academyId: string, course: string | null) => void;
   clearCompare: () => void;
+  /** 되돌리기: 뺀 학원들을 다시 넣는다 (이미 있으면 그대로, 최대 4곳) */
+  restoreCompare: (items: CompareItem[]) => void;
   inCompare: (academyId: string) => boolean;
 
   calc: CalcItem[];
   addCalc: (item: Omit<CalcItem, 'id'>) => void;
   updateCalc: (id: string, patch: Partial<CalcItem>) => void;
   removeCalc: (id: string) => void;
+  /** 되돌리기: 지운 항목을 원래 자리에 다시 넣는다 */
+  restoreCalc: (item: CalcItem, index: number) => void;
 
   settings: Settings;
   updateSettings: (patch: Partial<Settings>) => void;
@@ -183,6 +189,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppContextValue = {
     favorites,
     toggleFavorite,
+    // 되돌리기는 알림을 띄울 때의 목록이 아니라 지금 목록을 보고 판단해야 해서 함수형 업데이트로 한다
+    restoreFavorite: (item, index) => setFavorites((prev) => (prev.some((f) => f.id === item.id) ? prev : [...prev.slice(0, index), item, ...prev.slice(index)])),
     isFavorite: (id) => favorites.some((f) => f.id === id),
 
     compare,
@@ -190,12 +198,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     removeCompare: (id) => setCompare((prev) => prev.filter((c) => c.ref.id !== id)),
     setCompareCourse: (id, course) => setCompare((prev) => prev.map((c) => (c.ref.id === id ? { ...c, course } : c))),
     clearCompare: () => setCompare([]),
+    restoreCompare: (items) =>
+      setCompare((prev) => [...prev, ...items.filter((i) => !prev.some((c) => c.ref.id === i.ref.id))].slice(0, MAX_COMPARE)),
     inCompare: (id) => compare.some((c) => c.ref.id === id),
 
     calc,
     addCalc: (item) => setCalc((prev) => [...prev, { ...item, id: newId('calc') }]),
     updateCalc: (id, patch) => setCalc((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c))),
     removeCalc: (id) => setCalc((prev) => prev.filter((c) => c.id !== id)),
+    restoreCalc: (item, index) => setCalc((prev) => (prev.some((c) => c.id === item.id) ? prev : [...prev.slice(0, index), item, ...prev.slice(index)])),
 
     settings,
     updateSettings: (patch) => setSettings((prev) => ({ ...DEFAULT_SETTINGS, ...prev, ...patch })),

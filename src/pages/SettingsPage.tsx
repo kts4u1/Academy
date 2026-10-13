@@ -93,7 +93,7 @@ export function SettingsPage() {
           </label>
           <input
             id="neis-key-input"
-            className="field font-mono text-[13px]"
+            className="field font-mono md:text-[13px]"
             type="password"
             autoComplete="off"
             value={keyDraft}

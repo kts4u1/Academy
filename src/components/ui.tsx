@@ -1,7 +1,7 @@
 import { ChevronLeft, X } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { SUBJECT_MAP } from '../data/categories';
 import { SubjectIcon } from './SubjectIcon';
 import { PRICE_LEVEL_META, type PriceLevel } from '../lib/realData';
@@ -74,12 +74,16 @@ export function KindBadge({ kind }: { kind: string }) {
   return <span className="inline-flex items-center rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">{kind}</span>;
 }
 
+const SINGLE = typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__;
+
 /** 뒤로 가기. 링크로 바로 열어 앞 화면이 없으면(홈 화면 앱에는 브라우저 뒤로 버튼이 없다) fallback 으로 */
 function useGoBack(fallback = '/') {
   const navigate = useNavigate();
+  const location = useLocation();
   return () => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
+    // 주소창 기록(HashRouter)은 history.state.idx 로, 단일 파일 데모(MemoryRouter)는 첫 화면인지(key 'default')로 안다
+    const canGoBack = SINGLE ? location.key !== 'default' : ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+    if (canGoBack) navigate(-1);
     else navigate(fallback, { replace: true });
   };
 }
@@ -89,7 +93,7 @@ export function PageHeader({ title, subtitle, back = false, action }: { title: s
   return (
     <div className="flex items-start gap-2 pb-4 pt-2">
       {back && (
-        <button type="button" onClick={goBack} className="-ml-2 mt-0.5 rounded-lg p-2 text-ink-2 hover:bg-surface-2" aria-label="뒤로">
+        <button type="button" onClick={goBack} className="-ml-2.5 -mt-1 rounded-lg p-2.5 text-ink-2 hover:bg-surface-2" aria-label="뒤로">
           <ChevronLeft className="h-5 w-5" />
         </button>
       )}
@@ -105,7 +109,7 @@ export function PageHeader({ title, subtitle, back = false, action }: { title: s
 export function BackButton({ fallback = '/' }: { fallback?: string }) {
   const goBack = useGoBack(fallback);
   return (
-    <button type="button" onClick={goBack} className="-ml-2 rounded-lg p-2 text-ink-2 hover:bg-surface-2" aria-label="뒤로">
+    <button type="button" onClick={goBack} className="-ml-2.5 rounded-lg p-2.5 text-ink-2 hover:bg-surface-2" aria-label="뒤로">
       <ChevronLeft className="h-5 w-5" />
     </button>
   );
@@ -129,25 +133,37 @@ export function Section({ title, desc, action, children, className = '', id }: {
 /**
  * 아래에서 올라오는 시트 (넓은 화면은 가운데 창).
  * body 로 portal 해서, backdrop-filter 가 있는 머리글 안에서 열어도 화면 전체를 덮는다.
+ * 열려 있는 동안 뒤쪽 화면(#root)을 inert 로 막아 Tab·화면 낭독기가 시트 안에만 머물고, 닫으면 연 버튼으로 돌아간다.
  */
 export function Sheet({ open, onClose, title, children, footer }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const root = document.getElementById('root');
+    root?.setAttribute('inert', '');
+    panelRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current();
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
+      root?.removeAttribute('inert');
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   const safeBottom = 'env(safe-area-inset-bottom, 0px)';
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" aria-label="닫기" className="sheet-scrim absolute inset-0" onClick={onClose} />
-      <div className="relative flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl bg-surface shadow-xl md:rounded-2xl">
+      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl bg-surface shadow-xl outline-none md:rounded-2xl">
         <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 rounded-full bg-line md:hidden" />
         <div className="flex items-center justify-between border-b border-line py-1.5 pl-5 pr-2">
           <h2 className="text-base font-bold">{title}</h2>
@@ -202,7 +218,7 @@ export function Toggle({ id, checked, onChange, label, desc }: { id: string; che
 export function Segmented<T extends string>({ value, options, onChange, ariaLabel }: { value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; ariaLabel: string }) {
   return (
     <div role="radiogroup" aria-label={ariaLabel} className="scroll-x mx-0 px-0">
-      <div className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5">
+      <div className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5 max-md:min-w-full">
         {options.map((o) => (
           <button
             key={o.id}
@@ -210,7 +226,7 @@ export function Segmented<T extends string>({ value, options, onChange, ariaLabe
             role="radio"
             aria-checked={value === o.id}
             onClick={() => onChange(o.id)}
-            className={`min-h-[38px] whitespace-nowrap rounded-[10px] px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+            className={`min-h-[38px] whitespace-nowrap rounded-[10px] px-3 py-1.5 text-[13px] font-semibold transition-colors max-md:flex-1 ${
               value === o.id ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'
             }`}
           >

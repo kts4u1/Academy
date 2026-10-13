@@ -32,6 +32,9 @@ if (typeof window !== 'undefined') {
 
 export type InstallMode = 'prompt' | 'ios' | 'in-app' | 'none';
 
+/** 단일 파일 데모는 다른 페이지 안에 들어가 있어 설치·오프라인이 안 된다 */
+const SINGLE = typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__;
+
 function detect(): { standalone: boolean; mode: InstallMode } {
   if (typeof window === 'undefined') return { standalone: false, mode: 'none' };
   const nav = window.navigator as Navigator & { standalone?: boolean };
@@ -90,13 +93,13 @@ function Guide({ mode }: { mode: InstallMode }) {
 export function InstallBanner() {
   const { standalone, mode, install } = useInstall();
   const [dismissed, setDismissed] = useState(() => load('install-dismissed', false));
-  if (standalone || dismissed || mode === 'none') return null;
+  if (SINGLE || standalone || dismissed || mode === 'none') return null;
   const close = () => {
     save('install-dismissed', true);
     setDismissed(true);
   };
   return (
-    <div className="card relative mb-2 flex items-start gap-3 p-3.5 pr-10 md:hidden">
+    <div className="card relative mb-2 flex items-start gap-3 p-3.5 pr-12 md:hidden">
       <img src="icons/icon-192.png" alt="" className="h-10 w-10 shrink-0 rounded-xl" />
       <div className="min-w-0 text-[13px] text-ink-2">
         <p className="text-[14px] font-bold text-ink">학원비교를 앱처럼 쓰기</p>
@@ -112,7 +115,7 @@ export function InstallBanner() {
           </p>
         )}
       </div>
-      <button type="button" onClick={close} className="absolute right-2 top-2 rounded-lg p-2 text-ink-3 hover:bg-surface-2" aria-label="설치 안내 닫기">
+      <button type="button" onClick={close} className="absolute right-1 top-1 rounded-xl p-3 text-ink-3 hover:bg-surface-2" aria-label="설치 안내 닫기">
         <X aria-hidden="true" className="h-4 w-4" />
       </button>
     </div>
@@ -122,6 +125,12 @@ export function InstallBanner() {
 /** 설정 화면의 설치 안내 */
 export function InstallSection() {
   const { standalone, mode, install } = useInstall();
+  if (SINGLE)
+    return (
+      <p className="card p-4 text-sm text-ink-2">
+        이 미리 보기에서는 설치할 수 없어요. 배포된 사이트(GitHub Pages)를 휴대폰 브라우저로 열면 홈 화면에 추가할 수 있어요.
+      </p>
+    );
   if (standalone) return <p className="card p-4 text-sm text-ink-2">지금 홈 화면 앱으로 쓰고 있어요.</p>;
   return (
     <div className="card flex flex-col gap-3 p-4 text-sm text-ink-2">

@@ -17,6 +17,7 @@ function manifest(): DataManifest {
     offices: [],
     districts: [{ sido: '경기', sigungu: '성남시 분당구', code: '41135', file: 'd/41135.json', academies: 2, priced: 2 }],
     buckets: [{ sido: '경기', name: '성남시', file: 'b/0.json', academies: 1, priced: 1 }],
+    versions: { 'd/41135.json': 'h1', 'b/0.json': 'h2' },
   };
 }
 
@@ -49,6 +50,11 @@ describe('정적 데이터 (매주 자동 업데이트)', () => {
     expect(d?.cityWide).toBe(false);
     expect(d?.updatedAt).toBe('2026-10-12T18:00:00.000Z');
     expect(await loadMarketRows(d)).toEqual([{ sido: '경기' }]);
+    // 내용 해시가 있으면 그것을, 없으면(옛 목록) 갱신 시각을 주소에 붙인다
+    const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain('data/d/41135.json?v=h1');
+    expect(urls).toContain('data/b/0.json?v=h2');
+    expect(urls).toContain(`data/market.json?v=${encodeURIComponent('2026-10-12T18:00:00.000Z')}`);
   });
 
   it('학원이 없는 지역은 빈 목록', async () => {

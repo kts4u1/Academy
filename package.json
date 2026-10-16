@@ -12,7 +12,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "data:update": "tsx scripts/update-data.ts"
+    "data:update": "tsx scripts/update-data.ts",
+    "sports:fetch": "tsx scripts/fetch-sports.ts"
   },
   "dependencies": {
     "lucide-react": "^1.55.0",

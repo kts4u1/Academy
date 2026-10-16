@@ -7,3 +7,4 @@ coverage
 public/data/
 public/.data-tmp/
 .neis-raw/
+.sports-raw/

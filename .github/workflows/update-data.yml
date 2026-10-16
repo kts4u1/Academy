@@ -76,6 +76,23 @@ jobs:
           path: .neis-raw
           key: neis-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
 
+      # 체육시설·스포츠강좌 (국민체육진흥공단, 공공데이터포털 인증키 DATA_GO_KR_KEY)
+      # 받다가 실패해도 교육청 자료 배포는 그대로 한다
+      - name: 체육 자료 받기
+        id: sports
+        continue-on-error: true
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: npm run sports:fetch
+
+      - name: 체육 원자료 올리기 (점검용, 3일 보관)
+        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sports-raw
+          path: .sports-raw
+          retention-days: 3
+
       - run: npm test
 
       - run: npm run build

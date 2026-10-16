@@ -1,6 +1,7 @@
 // 교육청 원자료 → 앱이 읽는 정적 데이터 파일 (scripts/update-data.ts 가 쓴다)
 // 받는 것(API·전국 파일)과 가공을 나눠서, 코드만 바뀌었을 때 보관해 둔 원자료로 다시 가공할 수 있게 한다.
 
+import { stableName } from '../lib/hash';
 import { toNeisAcademy, type NeisRawRow } from '../lib/neis';
 import { buildMarket, toRealAcademy, type RealAcademy } from '../lib/realData';
 import type { DataManifest } from './manifest';
@@ -17,15 +18,7 @@ export interface RawSnapshot {
   offices: { code: string; total: number; rows: NeisRawRow[] }[];
 }
 
-/** 이름이 바뀌지 않는 짧은 파일 이름 (FNV-1a) */
-export function stableName(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(36);
-}
+export { stableName };
 
 /** 같은 학원이 두 교육청에 함께 올라 있는 경우(예: 군위군 경북→대구 편입) 한 번만 남긴다 */
 export function dedupeSamePlace(list: RealAcademy[]): RealAcademy[] {

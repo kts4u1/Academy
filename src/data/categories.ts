@@ -46,6 +46,8 @@ export const SUBJECTS: Subject[] = [
   { id: 'kickboxing', name: '킥복싱', short: '킥', group: 'sports', keywords: ['킥복싱', '무에타이', '입식타격'], inNeis: false },
   { id: 'kendo', name: '검도', short: '검도', group: 'sports', keywords: ['검도', '죽도', '호구', '검술'], inNeis: false },
   { id: 'jiujitsu', name: '주짓수', short: '주짓', group: 'sports', keywords: ['주짓수', '브라질리언주짓수', 'BJJ', '노기', '그래플링'], inNeis: false },
+  { id: 'hapkido', name: '합기도', short: '합기', group: 'sports', keywords: ['합기도', '호신술'], inNeis: false },
+  { id: 'judo', name: '유도', short: '유도', group: 'sports', keywords: ['유도'], inNeis: false },
   { id: 'basketball', name: '농구', short: '농구', group: 'sports', keywords: ['농구', '바스켓볼', '스킬트레이닝'], inNeis: false },
   { id: 'soccer', name: '축구', short: '축구', group: 'sports', keywords: ['축구', '풋살', '유소년축구'], inNeis: false },
   { id: 'baseball', name: '야구', short: '야구', group: 'sports', keywords: ['야구', '리틀야구', '베이스볼'], inNeis: false },
@@ -55,7 +57,7 @@ export const SUBJECTS: Subject[] = [
   { id: 'golf', name: '골프', short: '골프', group: 'sports', keywords: ['골프', '스크린골프', '골프레슨'], inNeis: false },
   { id: 'badminton', name: '배드민턴', short: '배드', group: 'sports', keywords: ['배드민턴', '셔틀콕'], inNeis: false },
   { id: 'tabletennis', name: '탁구', short: '탁구', group: 'sports', keywords: ['탁구', '핑퐁'], inNeis: false },
-  { id: 'pilates', name: '필라테스', short: '필라', group: 'sports', keywords: ['필라테스', '기구필라테스', '요가'], inNeis: false },
+  { id: 'pilates', name: '필라테스·요가', short: '필라', group: 'sports', keywords: ['필라테스', '기구필라테스', '요가'], inNeis: false },
   // ───────────── 예술 ─────────────
   { id: 'piano', name: '피아노', short: '피아', group: 'arts', keywords: ['피아노', '바이엘', '체르니', '입시피아노'], inNeis: true },
   { id: 'violin', name: '바이올린', short: '바이', group: 'arts', keywords: ['바이올린', '첼로', '비올라'], inNeis: true },

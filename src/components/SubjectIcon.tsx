@@ -11,12 +11,14 @@ import {
   GraduationCap,
   Guitar,
   HandFist,
+  HandGrab,
   Landmark,
   Languages,
   MicVocal,
   Mountain,
   Palette,
   Piano,
+  ShieldHalf,
   Sigma,
   Sword,
   WavesLadder,
@@ -110,7 +112,7 @@ const Belt = custom(
   </>,
 );
 
-/** 주짓수: 도복 */
+/** 유도: 도복 */
 const Gi = custom(
   <>
     <path d="M8.5 3 3 6.5l2.5 4 2-1.3V21h9V9.2l2 1.3 2.5-4L15.5 3" />
@@ -191,7 +193,9 @@ const ICONS: Record<string, LucideIcon | ReturnType<typeof custom>> = {
   boxing: HandFist,
   kickboxing: Kick,
   kendo: Sword,
-  jiujitsu: Gi,
+  jiujitsu: HandGrab,
+  hapkido: ShieldHalf,
+  judo: Gi,
   basketball: Basketball,
   soccer: SoccerBall,
   baseball: Baseball,

@@ -45,11 +45,49 @@ jobs:
 
       - run: npm ci
 
-      # 교육청 원자료(.neis-raw)를 보관해 두고, 코드만 바뀐 push 는 이번 주(한국 시간)에 받은 원자료를 새 코드로 다시 가공한다
       - name: 주차 계산
         id: week
         run: echo "week=$(TZ=Asia/Seoul date +%G-%V)" >> "$GITHUB_OUTPUT"
 
+      # 체육시설·스포츠강좌 (국민체육진흥공단, 공공데이터포털 인증키 DATA_GO_KR_KEY)
+      # 이번 주에 받은 원자료가 있으면(push) 그것을, 없거나 정기·수동 실행이면 새로 받는다.
+      # 받다가 실패하면 가장 최근에 받아 둔 원자료를 쓰고, 그것도 없으면 체육 자료 없이 배포한다.
+      - name: 체육 원자료 불러오기
+        id: sports-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .sports-raw
+          key: sports-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
+          restore-keys: |
+            sports-raw-${{ steps.week.outputs.week }}-
+            sports-raw-
+
+      - name: 체육 자료 받기
+        id: sports
+        if: github.event_name != 'push' || !startsWith(steps.sports-cache.outputs.cache-matched-key, format('sports-raw-{0}-', steps.week.outputs.week))
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: npm run sports:fetch
+
+      - name: 받은 체육 원자료 보관
+        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .sports-raw
+          key: sports-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
+
+      - name: 체육 원자료 올리기 (점검용, 3일 보관)
+        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sports-raw
+          path: .sports-raw
+          include-hidden-files: true
+          retention-days: 3
+
+      # 교육청 원자료(.neis-raw)를 보관해 두고, 코드만 바뀐 push 는 이번 주(한국 시간)에 받은 원자료를 새 코드로 다시 가공한다
       - name: 이번 주 원자료 불러오기
         if: github.event_name == 'push'
         uses: actions/cache/restore@v4
@@ -75,23 +113,6 @@ jobs:
         with:
           path: .neis-raw
           key: neis-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
-
-      # 체육시설·스포츠강좌 (국민체육진흥공단, 공공데이터포털 인증키 DATA_GO_KR_KEY)
-      # 받다가 실패해도 교육청 자료 배포는 그대로 한다
-      - name: 체육 자료 받기
-        id: sports
-        continue-on-error: true
-        env:
-          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-        run: npm run sports:fetch
-
-      - name: 체육 원자료 올리기 (점검용, 3일 보관)
-        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: sports-raw
-          path: .sports-raw
-          retention-days: 3
 
       - run: npm test
 

@@ -39,7 +39,7 @@ const DATASETS: Dataset[] = [
     id: 'facilities',
     name: '스포츠강좌이용권 등록시설 정보',
     url: 'https://apis.data.go.kr/B551014/SRVC_OD_API_FACIL_MNG/todz_api_facil_mng_i',
-    keep: ['brno', 'facil_sn', 'city_cd', 'city_nm', 'local_cd', 'local_nm', 'facil_nm', 'faci_zip', 'road_addr', 'faci_daddr', 'main_event_cd', 'main_event_nm', 'fac_gbn_nm', 'faci_gb_nm', 'del_yn', 'use_yn'],
+    keep: ['brno', 'facil_sn', 'city_cd', 'city_nm', 'local_cd', 'local_nm', 'facil_nm', 'faci_zip', 'road_addr', 'faci_daddr', 'main_event_cd', 'main_event_nm', 'facil_gbn_nm'],
   },
   {
     id: 'national',
@@ -198,7 +198,7 @@ function summarize(id: Dataset['id'], rows: Row[]) {
   } else if (id === 'facilities') {
     console.log(`  주종목: ${countBy(rows, 'main_event_nm', 60)}`);
     console.log(`  시도: ${countBy(rows, 'city_nm', 30)}`);
-    for (const f of ['fac_gbn_nm', 'faci_gb_nm', 'del_yn', 'use_yn']) if (rows.some((r) => f in r)) console.log(`  ${f}: ${countBy(rows, f, 20)}`);
+    for (const f of ['facil_gbn_nm']) if (rows.some((r) => f in r)) console.log(`  ${f}: ${countBy(rows, f, 20)}`);
   } else {
     console.log(`  시설구분: ${countBy(rows, 'faci_gb_nm', 20)}`);
     console.log(`  업종: ${countBy(rows, 'fcob_nm', 40)}`);

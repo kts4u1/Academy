@@ -8,6 +8,7 @@ import type { DataMode } from '../data/source';
 import { useApp } from '../store/AppContext';
 import type { AcademyRef } from '../types';
 import { KindBadge, PriceLevelBadge, SubjectChips, SubjectTile } from './ui';
+import { noPriceText, priceUnit, VOUCHER_CAP_NOTE } from '../lib/sourceText';
 
 export function academyPath(ref: Pick<AcademyRef, 'id' | 'sido' | 'sigungu'>, course?: string | null): string {
   const base = `/academy/${encodeURIComponent(ref.sido)}/${encodeURIComponent(ref.sigungu)}/${encodeURIComponent(ref.id)}`;
@@ -93,8 +94,9 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
             </p>
             <p className="num text-[20px] font-bold leading-tight tracking-tight">
               {manwon(rep.price)}
-              <span className="ml-1 text-[12px] font-medium text-ink-3">/ 월 신고 교습비</span>
+              <span className="ml-1 text-[12px] font-medium text-ink-3">{priceUnit(academy.source)}</span>
             </p>
+            {rep.voucherCap && <p className="text-[11px] text-ink-3">{VOUCHER_CAP_NOTE}</p>}
             {courses.length > 1 && (
               <p className="num text-[12px] text-ink-3">
                 맞는 과정 {courses.length}개 · {manwon(courses[0].price)} ~ {manwon(courses[courses.length - 1].price)}
@@ -111,9 +113,7 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
           )}
         </div>
       ) : (
-        <p className="text-[13px] text-ink-3">
-          {academy.courses.length === 0 ? '교육청 자료에 교습비가 공개되지 않았어요' : '비교할 수 있는 월 교습비가 없어요 (특강·1:1·재료비 등만 신고)'}
-        </p>
+        <p className="text-[13px] text-ink-3">{noPriceText(academy)}</p>
       )}
 
       <div className="absolute right-1.5 top-1.5 z-10 flex">

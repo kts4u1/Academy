@@ -2,7 +2,7 @@ import { CircleAlert, Database, KeyRound, LoaderCircle, RefreshCw } from 'lucide
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useManifest, type DistrictState } from '../hooks';
-import { dotDate, kstDate } from '../lib/format';
+import { dotDate, kstDate, manwon } from '../lib/format';
 import type { DistrictData } from '../data/source';
 
 /** 아직 쓸 수 있는 데이터가 없을 때: 매주 자동 업데이트 설정 방법 안내 */
@@ -81,8 +81,10 @@ export function DistrictGate({ state, onRetry, children }: { state: DistrictStat
 }
 
 /** 데이터 출처·기준일 한 줄. error: 데이터는 있는데 '지금 다시 받기'가 실패했을 때 */
-export function DataStamp({ data, onReload, error }: { data: DistrictData; onReload?: () => void; error?: string | null }) {
+export function DataStamp({ data, onReload, error, sports = false }: { data: DistrictData; onReload?: () => void; error?: string | null; sports?: boolean }) {
   const { manifest } = useManifest();
+  if (sports && data.sports)
+    return <p className="text-[12px] text-ink-3">국민체육진흥공단 스포츠강좌이용권·전국체육시설 정보 · {dotDate(data.sports.fetchedAt.slice(0, 10))} 받음 (매주 자동)</p>;
   const label =
     data.mode === 'live'
       ? `내 인증키로 받음 ${kstDate(data.updatedAt)}`
@@ -113,15 +115,29 @@ export function DataStamp({ data, onReload, error }: { data: DistrictData; onRel
 }
 
 /** 체육 과목: 교육청 자료에 없다는 안내 */
+/** 체육 종목 결과 위에 보여 주는 출처 안내 */
+export function SportsSourceNote({ voucherCap, fetchedAt }: { voucherCap: number | null; fetchedAt: string }) {
+  return (
+    <div className="mb-3 rounded-xl bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+      <p>
+        <b className="text-ink">국민체육진흥공단 자료</b> · {dotDate(fetchedAt.slice(0, 10))} 받음. 금액은 스포츠강좌이용권(저소득층 유·청소년 바우처) 가맹 시설이 등록한 강좌 결제금액이라
+        일반 회원가와 다를 수 있어요.
+        {voucherCap ? ` 월 지원 한도와 같은 ${manwon(voucherCap)} 강좌가 많아, 그 금액은 시세·비교에서 빼고 보여 드려요.` : ''} 금액이 없는 곳은 시·군·구에 신고된 체육시설
+        목록이에요.
+      </p>
+    </div>
+  );
+}
+
 export function SportsNotice({ subjectName }: { subjectName: string }) {
   return (
     <div className="card p-5">
-      <h2 className="text-base font-bold">{subjectName}은(는) 교육청 자료에 없어요</h2>
+      <h2 className="text-base font-bold">{subjectName} 자료를 아직 불러오지 못했어요</h2>
       <p className="mt-2 text-sm text-ink-2">
-        수영장·태권도장·복싱장·주짓수 도장 같은 체육시설은 학원법이 아니라 체육시설법에 따라 시·군·구청에 신고해서, 교육청 학원교습소정보에 들어 있지 않아요. 가격도 공개 의무가
-        없어 공식 자료가 없습니다.
+        수영장·태권도장·복싱장 같은 체육시설은 학원법이 아니라 체육시설법 대상이라 교육청 학원교습소정보에 없어요. 이 사이트는 국민체육진흥공단 자료(스포츠강좌이용권 강좌
+        금액·전국체육시설 목록)로 보여 드리는데, 지금은 그 자료가 없어요. (매주 자동 업데이트 때 받아요)
       </p>
-      <p className="mt-2 text-sm text-ink-2">가짜 숫자를 보여 드리는 대신 비워 둡니다. 다니는 곳의 금액은 ‘내 학원비’에 직접 넣어 관리할 수 있어요.</p>
+      <p className="mt-2 text-sm text-ink-2">다니는 곳의 금액은 ‘내 학원비’에 직접 넣어 관리할 수 있어요.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link to="/budget" className="btn-ghost">
           내 학원비에 직접 넣기

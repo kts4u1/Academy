@@ -151,6 +151,7 @@ export function scrubContacts(text: string): string {
   return text
     .replace(/0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g, '')
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 }
 

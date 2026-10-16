@@ -19,11 +19,15 @@ export interface Course {
   excluded?: string;
   /** 1:1·개인 레슨 */
   private?: boolean;
+  /** 스포츠강좌이용권 월 지원 한도와 똑같은 금액 (바우처에 맞춘 금액이라 시세에서 뺀다) */
+  voucherCap?: boolean;
 }
 
 export interface RealAcademy {
-  /** 교육청코드-학원지정번호 */
+  /** 교육청코드-학원지정번호 (체육시설은 kv-·kf- 로 시작) */
   id: string;
+  /** 자료 출처. 없으면 교육청(NEIS). voucher: 스포츠강좌이용권 등록 시설(강좌 금액 있음), facility: 전국체육시설 정보(금액 없음) */
+  source?: 'voucher' | 'facility';
   name: string;
   /** 학원 · 교습소 */
   kind: string;
@@ -123,6 +127,11 @@ export function isComparableCourse(c: Course): boolean {
   return c.subjectId !== null && !c.excluded && !c.private;
 }
 
+/** 시세 계산에 넣는 과정: 비교할 수 있고, 바우처 한도에 맞춘 금액이 아닌 것 */
+export function inMarket(c: Course): boolean {
+  return isComparableCourse(c) && !c.voucherCap;
+}
+
 export function courseMatches(c: Course, subjectId?: string | null, age?: AgeGroup | null): boolean {
   if (!isComparableCourse(c)) return false;
   if (subjectId && c.subjectId !== subjectId) return false;
@@ -214,7 +223,7 @@ export function buildMarket(academies: RealAcademy[]): MarketRow[] {
   };
   for (const a of academies) {
     for (const c of a.courses) {
-      if (!isComparableCourse(c)) continue;
+      if (!inMarket(c)) continue;
       const scopes = a.unassigned ? [''] : [a.sigungu, ''];
       for (const sg of scopes) {
         add(a.sido, sg, c.subjectId!, null, c.price, a.id);
@@ -295,7 +304,8 @@ export function positionOf(price: number, row: MarketRow, rawPrices?: number[]):
 /** 학원마다 조건에 맞는 대표 과정 금액 (시세 분포·히스토그램용, 시세와 같은 학원당 한 표) */
 export function academyPrices(academies: RealAcademy[], subjectId: string, age: AgeGroup | null): number[] {
   return academies.flatMap((a) => {
-    const rep = representativeCourse(a.courses.filter((c) => courseMatches(c, subjectId, age)));
+    // 시세(buildMarket)와 같은 기준: 바우처 한도에 맞춘 금액은 뺀다
+    const rep = representativeCourse(a.courses.filter((c) => courseMatches(c, subjectId, age) && inMarket(c)));
     return rep ? [rep.price] : [];
   });
 }

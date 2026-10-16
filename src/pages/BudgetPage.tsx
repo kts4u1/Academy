@@ -14,7 +14,7 @@ import { useApp, type CalcItem } from '../store/AppContext';
 import type { AgeGroup } from '../types';
 
 function itemMarket(rows: MarketRow[], item: CalcItem) {
-  if (item.noMarket || !item.subjectId || !SUBJECT_MAP[item.subjectId]?.inNeis || !item.sido) return null;
+  if (item.noMarket || !item.subjectId || !SUBJECT_MAP[item.subjectId] || !item.sido) return null;
   return marketForCourse(rows, { sido: item.sido, sigungu: item.sigungu }, { subjectId: item.subjectId, ages: item.age ? [item.age] : [] });
 }
 
@@ -126,7 +126,7 @@ export function BudgetPage() {
       <PageHeader title="내 학원비" subtitle="다니는 학원비를 모아 보고 우리 동네 신고 교습비 시세와 비교해요" />
 
       {calc.length === 0 ? (
-        <EmptyState title="아직 추가한 학원비가 없어요" desc="학원 상세 화면의 ‘내 학원비에 추가’를 누르거나, 아래에서 직접 입력하세요. 체육시설·과외처럼 교육청 자료에 없는 곳도 넣을 수 있어요." />
+        <EmptyState title="아직 추가한 학원비가 없어요" desc="학원 상세 화면의 ‘내 학원비에 추가’를 누르거나, 아래에서 직접 입력하세요. 과외처럼 자료에 없는 곳도 넣을 수 있어요." />
       ) : (
         <>
           <div className="card grid gap-4 p-4 sm:grid-cols-3">
@@ -177,7 +177,11 @@ export function BudgetPage() {
                               {item.subjectId && <SubjectChips subjectIds={[item.subjectId]} />}
                               {item.age && <span>{AGE_LABELS[item.age]}</span>}
                               {item.sigungu && <span>· {item.sigungu}</span>}
-                              {item.reportedPrice && <span>· 교육청 신고 {manwon(item.reportedPrice)}</span>}
+                              {item.reportedPrice && (
+                                <span>
+                                  · {item.subjectId && SUBJECT_MAP[item.subjectId] && !SUBJECT_MAP[item.subjectId].inNeis ? '바우처 등록' : '교육청 신고'} {manwon(item.reportedPrice)}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <button
@@ -219,8 +223,6 @@ export function BudgetPage() {
                               '시세를 불러오는 중…'
                             ) : item.noMarket ? (
                               '특강·1:1 같은 과정이라 월 시세와 비교하지 않아요'
-                            ) : item.subjectId && !SUBJECT_MAP[item.subjectId]?.inNeis ? (
-                              '체육시설은 교육청 자료가 없어 시세 비교를 못 해요'
                             ) : item.subjectId ? (
                               '이 지역·과목은 시세를 낼 만큼 자료가 없어요'
                             ) : (
@@ -237,7 +239,7 @@ export function BudgetPage() {
         </>
       )}
 
-      <Section title="직접 입력" desc="교육청 자료에 없는 체육시설·과외나 교습비가 공개되지 않은 학원도 함께 관리할 수 있어요">
+      <Section title="직접 입력" desc="과외나 금액이 공개되지 않은 학원·체육시설도 함께 관리할 수 있어요">
         <CustomForm onAdd={addCalc} people={people} />
       </Section>
 

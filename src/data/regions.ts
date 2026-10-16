@@ -195,10 +195,50 @@ export function districtFromAddress(roadAddress: string): District | undefined {
   return undefined;
 }
 
+/**
+ * 도로명 주소만으로 앱 시·군·구 정하기 (체육시설 자료처럼 교육청 행정구역명이 없는 자료).
+ * '인천광역시 중구 …'처럼 옛 구 이름이거나 일반구가 빠진 주소는 교육청 자료와 같은 규칙으로 동 이름을 보고 나눈다.
+ * address 에는 '(역삼동)'처럼 괄호 속 법정동을 넣으면 일반구·인천 옛 구를 정하는 데 쓴다.
+ * 구를 정하지 못하면 unassigned 와 함께 묶음 이름(예: '성남시')을 돌려준다.
+ */
+export function resolveAddressDistrict(
+  roadAddress: string,
+  address = '',
+  /** 주소를 읽지 못할 때 쓰는 자료의 시·도·시·군·구 이름 ('부산'·'부산광역시', '북구') */
+  hint?: { sido?: string; sigungu?: string },
+): { sido: string; sigungu: string; unassigned?: boolean } | null {
+  const p = addressParts(roadAddress);
+  const candidates: { sidos: string[]; sgg: string; gu?: string }[] = [];
+  if (p) candidates.push(p);
+  if (hint?.sido && hint.sigungu) {
+    const sidos = SIDOS.includes(hint.sido) ? [hint.sido] : sidosOfFullName(hint.sido);
+    const m = hint.sigungu.trim().match(/^(\S+?(?:시|군|구))\s*(\S+구)?$/);
+    if (sidos.length && m) candidates.push({ sidos, sgg: m[1], ...(m[2] ? { gu: m[2] } : {}) });
+  }
+  const located = { roadAddress, address: address || roadAddress };
+  for (const c of candidates) {
+    let bucket: { sido: string; sigungu: string; unassigned: true } | null = null;
+    for (const sido of c.sidos) {
+      const zone = c.gu ? `${c.sgg} ${c.gu}` : c.sgg;
+      if (findDistrict(sido, zone)) return { sido, sigungu: zone };
+      const res = resolveNeisDistrict(sido, { sigungu: c.sgg, ...located });
+      if ('sigungu' in res) return { sido: res.sido ?? sido, sigungu: res.sigungu };
+      // 통합 시·도('전남광주')는 다른 후보 시·도에서도 찾아본다
+      if (c.sidos.length === 1) bucket = { sido, sigungu: res.bucket, unassigned: true };
+    }
+    if (bucket) return bucket;
+  }
+  return null;
+}
+
 /** 없어진 행정구역 → 지금의 시·군·구 */
 const LEGACY_ZONES: Record<string, { sido: string; sigungu: string }> = {
   // 2012년 세종특별자치시 출범. 충남 교육청 자료에 '연기군'으로 남은 곳이 있다
   '충남|연기군': { sido: '세종', sigungu: '세종시' },
+  // 체육시설 자료 주소에 남은 옛 이름
+  '인천|남구': { sido: '인천', sigungu: '미추홀구' },
+  '경기|여주군': { sido: '경기', sigungu: '여주시' },
+  '경남|진해시': { sido: '경남', sigungu: '창원시 진해구' },
 };
 
 /** 일반구가 있는 시 → 구 이름 → 그 구의 동 이름들 */

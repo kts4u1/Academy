@@ -12,6 +12,7 @@ import { dotDate, manwon, unitPrice } from '../lib/format';
 import { courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
 import { marketForCourse, marketScopeName, type MarketMatch } from '../lib/realSearch';
 import { MAX_COMPARE, useApp, type CompareItem } from '../store/AppContext';
+import { noPriceText, sourceShort } from '../lib/sourceText';
 
 interface Column {
   item: CompareItem;
@@ -59,7 +60,7 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
           </select>
         </label>
       ) : (
-        <p className="mt-3 text-[13px] text-ink-3">{c.academy ? '교육청 자료에 교습비가 공개되지 않았어요' : '이번 자료에서 찾지 못했어요'}</p>
+        <p className="mt-3 text-[13px] text-ink-3">{c.academy ? noPriceText(c.academy) : '이번 자료에서 찾지 못했어요'}</p>
       )}
 
       {c.course && (
@@ -154,7 +155,8 @@ export function ComparePage() {
     const data = states.get(`${item.ref.sido}|${item.ref.sigungu}`)?.data;
     const academy = data ? ([...data.academies, ...data.unknownDistrict].find((a) => a.id === item.ref.id) ?? null) : null;
     const course = (academy && findCourse(academy.courses, item.course)) ?? null;
-    const match = academy && course && isComparableCourse(course) ? marketForCourse(market.rows, academy, course) : null;
+    // 바우처 한도에 맞춘 금액은 시세 위치를 매기지 않는다
+    const match = academy && course && isComparableCourse(course) && !course.voucherCap ? marketForCourse(market.rows, academy, course) : null;
     return { item, academy, course, match, position: course && match ? positionOf(course.price, match.row) : null };
   });
 
@@ -162,12 +164,13 @@ export function ComparePage() {
   const minPrice = priced.length > 1 ? Math.min(...priced.map((c) => c.course!.price)) : null;
   const subjects = new Set(priced.map((c) => c.course!.subjectId ?? '?'));
   const ageSets = new Set(priced.map((c) => c.course!.ages.join(',')));
+  const anySports = columns.some((c) => c.academy?.source);
 
   return (
     <div>
       <PageHeader
         title="비교함"
-        subtitle={`${compare.length} / ${MAX_COMPARE}곳 · 교육청 신고 교습비 기준`}
+        subtitle={`${compare.length} / ${MAX_COMPARE}곳 · ${anySports ? '신고 교습비·바우처 등록 금액' : '교육청 신고 교습비'} 기준`}
         action={
           <button type="button" className="btn-ghost px-3 py-2 text-[13px]" onClick={clearWithUndo}>
             <Trash aria-hidden="true" className="h-4 w-4" />
@@ -328,7 +331,9 @@ export function ComparePage() {
                   {c.academy ? (
                     <>
                       {c.academy.established ? dotDate(c.academy.established) : '-'}
-                      <span className="block text-[11px] text-ink-3">교육청 갱신 {c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}</span>
+                      <span className="block text-[11px] text-ink-3">
+                        {sourceShort(c.academy.source)} 갱신 {c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}
+                      </span>
                     </>
                   ) : (
                     '-'
@@ -359,7 +364,10 @@ export function ComparePage() {
         </Section>
       )}
 
-      <p className="mt-6 text-[12px] text-ink-3">신고 교습비는 학원이 교육청에 신고한 1인 월 금액이에요. 교재비·차량비·할인은 포함되지 않아요.</p>
+      <p className="mt-6 text-[12px] text-ink-3">
+        신고 교습비는 학원이 교육청에 신고한 1인 월 금액이에요. 교재비·차량비·할인은 포함되지 않아요.
+        {anySports && ' 체육시설의 바우처 등록 금액은 스포츠강좌이용권 가맹 시설이 등록한 강좌 결제금액이라 일반 회원가와 다를 수 있어요.'}
+      </p>
     </div>
   );
 }

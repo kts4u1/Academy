@@ -104,7 +104,7 @@ export function SubjectPicker({ value, onChange }: { value: string; onChange: (s
           <section key={g.id} className="mb-5">
             <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold text-ink-2">
               {g.name}
-              {g.id === 'sports' && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-3">교육청 자료 없음</span>}
+              {g.id === 'sports' && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-3">바우처 등록 금액</span>}
             </h3>
             <ul className="grid grid-cols-4 gap-x-1 gap-y-3">
               {subjectsOf(g.id).map((s) => (

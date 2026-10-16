@@ -89,11 +89,11 @@ describe('App', () => {
     expect(screen.getByText('개포영어교습소')).toBeInTheDocument();
   });
 
-  it('체육 과목은 자료가 없다고 솔직하게 알린다', async () => {
+  it('체육 자료가 없으면 솔직하게 알린다', async () => {
     serve(true);
     window.location.hash = '#/search?sido=서울&sigungu=강남구&subject=swim';
     render(<App />);
-    expect(await screen.findByRole('heading', { name: /수영은\(는\) 교육청 자료에 없어요/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /수영 자료를 아직 불러오지 못했어요/ })).toBeInTheDocument();
   });
 
   it('되돌리기: 지운 찜·비교함·내 학원비를 원래 자리에 그대로 되살린다', async () => {
@@ -139,5 +139,56 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
     expect(stored('calc').map((c) => c.id)).toEqual(['c1', 'c2']);
     view.unmount();
+  });
+
+  it('체육 과목: 바우처 등록 금액과 신고 체육시설 목록', async () => {
+    const tkd = [
+      { name: '가나태권도', price: 150000 },
+      { name: '다라태권도', price: 130000 },
+      { name: '마바태권도', price: 160000 },
+      { name: '사아태권도', price: 105000 },
+    ].map(({ name, price }, i) => ({
+      id: `kv-${i}`,
+      name,
+      kind: '체육시설',
+      source: 'voucher' as const,
+      sido: '서울',
+      sigungu: '강남구',
+      dong: '역삼동',
+      address: '서울특별시 강남구 도곡로 1',
+      phone: '',
+      realm: '스포츠강좌이용권',
+      category: '태권도',
+      capacity: null,
+      established: '',
+      loadedAt: '2026-10-16',
+      courses: [{ name: '태권도 주5회', price, subjectId: 'taekwondo', ages: ['preschool', 'elementary', 'middle', 'high'] as const, ...(price === 105000 ? { voucherCap: true } : {}) }],
+      subjects: ['taekwondo'],
+    }));
+    const listed = { ...tkd[0], id: 'kf-1', name: '목록태권도', source: 'facility' as const, courses: [], phone: '02-111-2222' };
+    const district = [...gangnam, ...tkd, listed];
+    const sportsManifest = { ...manifest, sports: { fetchedAt: '2026-10-16T01:00:00.000Z', voucherCap: 105000, priced: 4, courses: 4, listed: 1 } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string) => {
+        const url = input.split('?')[0];
+        if (url === 'data/manifest.json') return json(sportsManifest);
+        if (url === 'data/d/11680.json') return json(district);
+        if (url === 'data/market.json') return json({ rows: buildMarket(district as never) });
+        return json({}, 404);
+      }),
+    );
+    window.location.hash = '#/search?sido=서울&sigungu=강남구&subject=taekwondo';
+    render(<App />);
+    const cards = await screen.findAllByRole('article');
+    expect(cards.map((c) => c.querySelector('h3')?.textContent)).toEqual(['사아태권도', '다라태권도', '가나태권도', '마바태권도', '목록태권도']);
+    expect(screen.getByText(/국민체육진흥공단 자료/)).toBeInTheDocument();
+    // 한도 금액(10.5만원)은 시세에서 빼고, 배지도 붙이지 않는다
+    expect(cards[0]).toHaveTextContent('바우처 월 지원 한도와 같은 금액이라 시세 비교에서 뺐어요');
+    expect(cards[0]).not.toHaveTextContent('중앙값');
+    expect(cards[1]).toHaveTextContent('/ 월 · 바우처 등록 금액');
+    expect(cards[1]).toHaveTextContent('중앙값 15만원');
+    expect(cards[4]).toHaveTextContent('금액 정보가 없어요');
+    // 전체 과목 목록에는 체육시설이 섞이지 않는다
   });
 });

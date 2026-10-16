@@ -6,7 +6,7 @@ import { InstallBanner } from '../components/InstallPrompt';
 import { RegionPicker } from '../components/RegionPicker';
 import { Section, SubjectTile } from '../components/ui';
 import { GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
-import { useAvailability, useDistrictData, useMarket } from '../hooks';
+import { useAvailability, useDistrictData, useManifest, useMarket } from '../hooks';
 import { manwon, withJosa } from '../lib/format';
 import { marketScopeName, parseQuery } from '../lib/realSearch';
 import { useApp } from '../store/AppContext';
@@ -28,8 +28,10 @@ function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
   const entry = manifest?.districts.find((d) => d.sido === sido && d.sigungu === sigungu);
 
   const tiles = useMemo(() => {
-    const local = market.rows.filter((r) => r.sido === sido && r.sigungu === sigungu && r.age === null);
-    const wide = market.rows.filter((r) => r.sido === sido && r.sigungu === '' && r.age === null);
+    // 교습비 시세만 (체육은 바우처 등록 금액이라 과목 화면에서 따로 본다)
+    const neis = market.rows.filter((r) => SUBJECT_MAP[r.subjectId]?.inNeis);
+    const local = neis.filter((r) => r.sido === sido && r.sigungu === sigungu && r.age === null);
+    const wide = neis.filter((r) => r.sido === sido && r.sigungu === '' && r.age === null);
     const rows = local.length >= 3 ? local : wide;
     return rows.sort((a, b) => b.academies - a.academies || b.n - a.n).slice(0, 8);
   }, [market.rows, sido, sigungu]);
@@ -48,6 +50,12 @@ function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
         <p className="mb-3 text-sm text-ink-2">
           {sigungu}에 교육청에 등록된 학원·교습소 <b className="text-ink">{entry.academies.toLocaleString()}곳</b> · 교습비 공개{' '}
           <b className="text-ink">{entry.priced.toLocaleString()}곳</b>
+          {entry.sports ? (
+            <>
+              {' '}
+              · 체육시설 <b className="text-ink">{entry.sports.toLocaleString()}곳</b>
+            </>
+          ) : null}
         </p>
       )}
       {tiles.length === 0 ? (
@@ -76,6 +84,8 @@ function HomeMarket({ sido, sigungu }: { sido: string; sigungu: string }) {
 }
 
 export function HomePage() {
+  const { manifest } = useManifest();
+  const hasSports = Boolean(manifest?.sports);
   const navigate = useNavigate();
   const { settings, updateSettings } = useApp();
   const home = settings.home;
@@ -154,15 +164,19 @@ export function HomePage() {
         )}
       </Section>
 
-      {/* 교육청 자료가 있는 교과·예술을 먼저, 자료가 없는 체육은 뒤에 */}
+      {/* 교육청 자료인 교과·예술을 먼저, 국민체육진흥공단 자료인 체육은 뒤에 */}
       {[...GROUPS].sort((a, b) => Number(a.id === 'sports') - Number(b.id === 'sports')).map((g) => {
-        const noData = g.id === 'sports';
+        const sports = g.id === 'sports';
         return (
           <Section
             key={g.id}
             title={g.name}
-            desc={noData ? '수영 · 태권도 · 복싱 · 주짓수 · 구기' : g.desc}
-            action={noData ? <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-ink-3">교육청 자료 없음</span> : undefined}
+            desc={sports ? '수영 · 태권도 · 복싱 · 주짓수 · 구기' : g.desc}
+            action={
+              sports ? (
+                <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-ink-3">{hasSports ? '바우처 등록 금액' : '자료 준비 중'}</span>
+              ) : undefined
+            }
           >
             <ul className="grid grid-cols-4 gap-x-2 gap-y-3 sm:grid-cols-6 lg:grid-cols-9">
               {subjectsOf(g.id).map((s) => (
@@ -189,7 +203,7 @@ export function HomePage() {
           <li>· 과정 이름으로 과목·대상 연령을 나누고, 특강·교재비·1:1 레슨은 시세 비교에서 빼요.</li>
           <li>· 교습비는 교육청에 신고된 금액이라 실제 받는 금액(할인·교재비 등)과 다를 수 있어요.</li>
           <li>
-            · 수영·태권도 같은 체육시설은 교육청 관할이 아니라 자료가 없어요.{' '}
+            · 수영·태권도 같은 체육시설은 교육청 관할이 아니라, 국민체육진흥공단의 스포츠강좌이용권 강좌 금액과 전국체육시설 목록으로 보여 드려요.{' '}
             <Link to="/data" className="font-semibold text-accent hover:underline">
               자세히
             </Link>

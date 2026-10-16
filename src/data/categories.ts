@@ -2,7 +2,7 @@ import type { AgeGroup, CategoryGroup } from '../types';
 
 export const GROUPS: { id: CategoryGroup; name: string; desc: string }[] = [
   { id: 'academic', name: '교과', desc: '국어 · 영어 · 수학 · 과학 · 논술 · 코딩 · 외국어' },
-  { id: 'sports', name: '체육', desc: '수영 · 태권도 · 복싱 · 주짓수 · 구기 (교육청 자료 없음)' },
+  { id: 'sports', name: '체육', desc: '수영 · 태권도 · 복싱 · 주짓수 · 구기 (국민체육진흥공단 자료)' },
   { id: 'arts', name: '예술', desc: '피아노 · 바이올린 · 미술 · 발레 · 댄스 · 연기' },
 ];
 
@@ -24,7 +24,7 @@ export interface Subject {
   group: CategoryGroup;
   /** 검색어에서 이 과목으로 알아들을 낱말. 여러 과목에 걸치는 말(보습·실용음악·내신 등)은 넣지 않는다 */
   keywords: string[];
-  /** 교육청(NEIS) 학원교습소 자료에 있는 분야인지. 체육시설은 체육시설법 대상이라 없다. */
+  /** 교육청(NEIS) 학원교습소 자료에 있는 분야인지. 체육시설은 체육시설법 대상이라 없고, 국민체육진흥공단 자료로 보여 준다. */
   inNeis: boolean;
 }
 
@@ -39,7 +39,7 @@ export const SUBJECTS: Subject[] = [
   { id: 'coding', name: '코딩', short: '코', group: 'academic', keywords: ['코딩', '프로그래밍', '파이썬', '스크래치', '로봇', '정보올림피아드'], inNeis: true },
   { id: 'lang2', name: '제2외국어', short: '외', group: 'academic', keywords: ['중국어', '일본어', '스페인어', 'HSK', 'JLPT', '제2외국어'], inNeis: true },
   { id: 'allsubj', name: '종합(전과목)', short: '종', group: 'academic', keywords: ['전과목', '국영수', '공부방'], inNeis: true },
-  // ───────────── 체육 (교육청 자료 없음) ─────────────
+  // ───────────── 체육 (교육청 자료 없음 → 국민체육진흥공단 스포츠강좌이용권·전국체육시설) ─────────────
   { id: 'swim', name: '수영', short: '수영', group: 'sports', keywords: ['수영', '생존수영', '자유형', '접영', '아쿠아', '스윔'], inNeis: false },
   { id: 'taekwondo', name: '태권도', short: '태권', group: 'sports', keywords: ['태권도', '품새', '겨루기', '시범단'], inNeis: false },
   { id: 'boxing', name: '복싱', short: '복싱', group: 'sports', keywords: ['복싱', '권투', '다이어트복싱'], inNeis: false },

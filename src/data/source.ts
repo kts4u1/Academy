@@ -6,6 +6,7 @@
 //    선택한 시·군·구만 교육청에서 직접 받고, 브라우저에 7일 동안 보관한 뒤 다시 받는다.
 // 가짜·예시 데이터는 쓰지 않는다.
 
+import type { SportsSummary } from './sports';
 import { idbClear, idbGet, idbSet } from '../store/idb';
 import { fetchAllNeisAcademies } from '../lib/neis';
 import { buildMarket, toRealAcademy, type MarketRow, type RealAcademy } from '../lib/realData';
@@ -30,6 +31,8 @@ export interface DistrictData {
   cityWide: boolean;
   updatedAt: string;
   sampleMode: boolean;
+  /** 체육시설 자료(국민체육진흥공단)가 함께 들어 있으면 그 요약 */
+  sports?: SportsSummary;
 }
 
 let manifestPromise: Promise<DataManifest | null> | null = null;
@@ -100,7 +103,7 @@ async function loadStaticDistrict(m: DataManifest, sido: string, sigungu: string
   const bucketFiles = m.buckets.filter((b) => b.sido === sido && bucketNames.has(b.name));
   const unknownDistrict = (await Promise.all(bucketFiles.map((b) => loadFile(m, b.file)))).flat();
   const cityWide = unknownDistrict.length > 0 && unknownDistrict.length / (unknownDistrict.length + academies.length) > 0.5;
-  return { mode: 'static', sido, sigungu, academies, unknownDistrict, cityWide, updatedAt: m.updatedAt, sampleMode: m.sampleMode };
+  return { mode: 'static', sido, sigungu, academies, unknownDistrict, cityWide, updatedAt: m.updatedAt, sampleMode: m.sampleMode, ...(m.sports ? { sports: m.sports } : {}) };
 }
 
 interface LiveCacheEntry {

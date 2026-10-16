@@ -219,6 +219,8 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
   const age = filters.age || null;
   const hits: SearchHit[] = [];
   for (const a of pool) {
+    // 체육시설은 체육 종목을 고르거나 이름으로 찾을 때만 보여 준다 (학원 목록에 섞이지 않게)
+    if (a.source && !filters.subject && tokens.length === 0) continue;
     if (filters.kind && a.kind !== filters.kind) continue;
     if (!textMatches(a, tokens)) continue;
     const comparable = a.courses.filter(isComparableCourse);
@@ -229,9 +231,10 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
       if (courses.length === 0 && !unknownPrice) continue;
     }
     if (filters.pricedOnly && courses.length === 0) continue;
-    const rep = representativeCourse(courses);
+    // 바우처 한도에 맞춘 금액보다 실제 금액을 대표로 보여 준다
+    const rep = representativeCourse(courses.some((c) => !c.voucherCap) ? courses.filter((c) => !c.voucherCap) : courses);
     const market = rep ? marketForCourse(rows, a, rep, age) : null;
-    const pos = rep && market ? positionOf(rep.price, market.row) : null;
+    const pos = rep && market && !rep.voucherCap ? positionOf(rep.price, market.row) : null;
     hits.push({ academy: a, courses, rep, market, percentile: pos?.percentile ?? null, level: pos?.level ?? null, diffFromMedian: pos?.diffFromMedian ?? null });
   }
   const byName = (x: SearchHit, y: SearchHit) => x.academy.name.localeCompare(y.academy.name, 'ko');

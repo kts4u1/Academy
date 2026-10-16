@@ -5,6 +5,7 @@ import { stableName } from '../lib/hash';
 import { toNeisAcademy, type NeisRawRow } from '../lib/neis';
 import { buildMarket, toRealAcademy, type RealAcademy } from '../lib/realData';
 import type { DataManifest } from './manifest';
+import { buildSports, type SportsSnapshot } from './sports';
 import { DISTRICTS, EDU_OFFICES } from './regions';
 
 /** 원자료 묶음: API 든 전국 파일이든 같은 모양으로 보관하고 가공한다 */
@@ -31,7 +32,11 @@ export function dedupeSamePlace(list: RealAcademy[]): RealAcademy[] {
   return Array.from(best.values());
 }
 
-export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files: Map<string, unknown> } {
+/**
+ * sports: 국민체육진흥공단 체육시설 원자료(.sports-raw). 있으면 같은 시·군·구 파일에 체육시설을 함께 넣고
+ * 시세도 함께 낸다 (체육 과목은 교육청 자료에 없어 서로 섞이지 않는다).
+ */
+export function buildOutput(snap: RawSnapshot, sports?: SportsSnapshot | null): { manifest: DataManifest; files: Map<string, unknown> } {
   const academies: RealAcademy[] = [];
   const officeStats: DataManifest['offices'] = [];
   let skippedClosed = 0;
@@ -54,9 +59,10 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
     officeStats.push({ code: o.code, sido: office.sido, total: o.total, fetched: seen.size, kept });
   }
 
+  const sportsBuilt = sports ? buildSports(sports) : null;
   const byDistrict = new Map<string, RealAcademy[]>();
   const byBucket = new Map<string, RealAcademy[]>();
-  for (const a of academies) {
+  for (const a of [...academies, ...(sportsBuilt?.academies ?? [])]) {
     const k = `${a.sido}|${a.sigungu}`;
     const map = a.unassigned ? byBucket : byDistrict;
     const list = map.get(k);
@@ -65,6 +71,13 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
   }
   const prepare = (list: RealAcademy[]) => dedupeSamePlace(list).sort((x, y) => x.name.localeCompare(y.name, 'ko'));
   const priced = (list: RealAcademy[]) => list.filter((a) => a.courses.length > 0).length;
+  const neis = (list: RealAcademy[]) => list.filter((a) => !a.source);
+  /** 시·군·구별 개수: 학원·교습소(교육청)와 체육시설을 따로 센다 */
+  const counts = (list: RealAcademy[]) => {
+    const n = neis(list);
+    const s = list.filter((a) => a.source);
+    return { academies: n.length, priced: priced(n), ...(s.length ? { sports: s.length, sportsPriced: priced(s) } : {}) };
+  };
   const files = new Map<string, unknown>();
   const all: RealAcademy[] = [];
 
@@ -73,7 +86,7 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
     all.push(...list);
     const file = `d/${d.code}.json`;
     if (list.length) files.set(file, list);
-    return { sido: d.sido, sigungu: d.sigungu, code: d.code, file: list.length ? file : null, academies: list.length, priced: priced(list) };
+    return { sido: d.sido, sigungu: d.sigungu, code: d.code, file: list.length ? file : null, ...counts(list) };
   });
   const buckets: DataManifest['buckets'] = Array.from(byBucket.entries(), ([k, raw]) => {
     const [sido, name] = k.split('|');
@@ -81,7 +94,7 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
     all.push(...list);
     const file = `b/${stableName(k)}.json`;
     files.set(file, list);
-    return { sido, name, file, academies: list.length, priced: priced(list) };
+    return { sido, name, file, ...counts(list) };
   });
 
   const market = buildMarket(all);
@@ -103,15 +116,16 @@ export function buildOutput(snap: RawSnapshot): { manifest: DataManifest; files:
           ? `나이스 교육정보 개방 포털 학원교습소정보 전국 파일${snap.fileName ? ` (${snap.fileName})` : ''}`
           : '나이스 학원교습소정보 표본 (개발용)',
     totals: {
-      academies: all.length,
-      priced: priced(all),
-      courses: all.reduce((s, a) => s + a.courses.length, 0),
+      academies: neis(all).length,
+      priced: priced(neis(all)),
+      courses: neis(all).reduce((s, a) => s + a.courses.length, 0),
       unassigned: buckets.reduce((s, b) => s + b.academies, 0),
       skippedClosed,
     },
     offices: officeStats,
     districts,
     buckets,
+    ...(sportsBuilt ? { sports: sportsBuilt.summary } : {}),
     versions,
   };
   files.set('manifest.json', manifest);

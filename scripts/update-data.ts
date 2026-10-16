@@ -17,11 +17,14 @@
 //   public/data/d/{시군구코드}.json   시·군·구별 학원·교습소와 과정별 교습비
 //   public/data/b/{이름 해시}.json    주소로 구를 정하지 못한 학원 (예: 성남시 · 구 미상)
 //   public/data/market.json          시·군·구·시·도별 과목 × 대상 교습비 시세
+//
+// .sports-raw/ (scripts/fetch-sports.ts 가 받은 국민체육진흥공단 체육시설 자료)가 있으면 체육시설도 함께 넣는다.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildOutput, type RawSnapshot } from '../src/data/buildData';
+import type { SportsSnapshot } from '../src/data/sports';
 import { EDU_OFFICES } from '../src/data/regions';
 import { fetchAllNeisAcademies, neisErrorMessage, type NeisRawRow } from '../src/lib/neis';
 import { baseDateOf, csvToRawRows, decodeKorean, downloadNeisFile, findLatestNeisFile } from '../src/lib/neisFile';
@@ -30,6 +33,20 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'public', 'data');
 const tmpDir = join(root, 'public', '.data-tmp');
 const rawDir = join(root, '.neis-raw');
+const sportsRawDir = join(root, '.sports-raw');
+
+/** 체육시설 원자료 (없거나 읽지 못하면 체육 자료 없이 만든다) */
+function loadSportsRaw(): SportsSnapshot | null {
+  if (!existsSync(join(sportsRawDir, 'meta.json'))) return null;
+  try {
+    const meta = JSON.parse(readFileSync(join(sportsRawDir, 'meta.json'), 'utf8')) as { fetchedAt: string };
+    const read = (name: string) => JSON.parse(readFileSync(join(sportsRawDir, `${name}.json`), 'utf8')) as SportsSnapshot['courses'];
+    return { fetchedAt: meta.fetchedAt, courses: read('courses'), facilities: read('facilities'), national: read('national') };
+  } catch (err) {
+    console.log(`::warning::체육시설 원자료를 읽지 못해 체육 자료 없이 만듭니다: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
 
 function parseArgs(argv: string[]) {
   const get = (name: string) => {
@@ -156,12 +173,19 @@ async function main() {
     saveRaw(snap);
   }
 
-  const { manifest, files } = buildOutput(snap);
+  const sports = loadSportsRaw();
+  const { manifest, files } = buildOutput(snap, sports);
   writeOutput(files);
   const t = manifest.totals;
   console.log(
     `\n완료: 학원·교습소 ${t.academies.toLocaleString()}곳 (교습비 공개 ${t.priced.toLocaleString()}곳), 과정 ${t.courses.toLocaleString()}개` +
       `${t.unassigned ? `, 구 미상 ${t.unassigned.toLocaleString()}곳` : ''} · 출처 ${manifest.source}${manifest.baseDate ? ` (${manifest.baseDate} 기준)` : ''}`,
+  );
+  const s = manifest.sports;
+  console.log(
+    s
+      ? `체육시설: 강좌 금액 있는 곳 ${s.priced.toLocaleString()}곳 (강좌 ${s.courses.toLocaleString()}개, 바우처 한도 ${s.voucherCap?.toLocaleString() ?? '-'}원) · 목록만 ${s.listed.toLocaleString()}곳 · ${s.fetchedAt.slice(0, 10)} 받음`
+      : '체육시설 자료 없음 (.sports-raw)',
   );
 }
 

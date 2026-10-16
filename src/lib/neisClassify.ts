@@ -102,6 +102,11 @@ const EXCLUDE_RE = new RegExp(
   'i',
 );
 
+/** 특강·체험·재료비처럼 월 교습비가 아닌 과정 이름인지 (체육 강좌에도 같은 규칙을 쓴다) */
+export function isNonMonthlyCourseName(course: string): boolean {
+  return EXCLUDE_RE.test(course);
+}
+
 /** 이 값 이하면 월 교습비가 아니라 회당·일일 금액일 가능성이 높다 */
 export const MIN_MONTHLY = 30000;
 export const MAX_MONTHLY = 3000000;

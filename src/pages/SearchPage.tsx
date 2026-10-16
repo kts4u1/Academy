@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Histogram } from '../charts/Histogram';
 import { AcademyCard } from '../components/AcademyCard';
-import { DataStamp, DistrictGate, ErrorState, LoadingState, SportsNotice } from '../components/DataState';
+import { DataStamp, DistrictGate, ErrorState, LoadingState, SportsNotice, SportsSourceNote } from '../components/DataState';
 import { RegionPicker } from '../components/RegionPicker';
 import { SubjectPicker } from '../components/SubjectPicker';
 import { EmptyState, PageHeader, Segmented, Sheet, Toggle } from '../components/ui';
@@ -60,8 +60,10 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
     }
   };
   const priced = hits.filter((h) => h.rep);
-  // 시세와 같은 기준: 학원마다 대표 과정 금액 하나
-  const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => (h.rep ? [h.rep.price] : [])) : []), [hits, filters.subject]);
+  // 시세와 같은 기준: 학원마다 대표 과정 금액 하나 (바우처 한도에 맞춘 금액은 뺀다)
+  const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => (h.rep && !h.rep.voucherCap ? [h.rep.price] : [])) : []), [hits, filters.subject]);
+  const sportsSubject = Boolean(filters.subject && SUBJECT_MAP[filters.subject] && !SUBJECT_MAP[filters.subject].inNeis);
+  const pricedWord = sportsSubject ? '금액 공개' : '교습비 공개';
   const stats = summarize(prices);
   const region = { sido: data.sido, sigungu: data.sigungu };
   // 시세가 늦게 오면 정렬·배지가 바뀌어 보이므로 다 받은 뒤에 보여 준다
@@ -72,7 +74,7 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-ink-2" aria-live="polite">
-          <b className="text-ink">{hits.length.toLocaleString()}곳</b> · 교습비 공개 {priced.length.toLocaleString()}곳
+          <b className="text-ink">{hits.length.toLocaleString()}곳</b> · {pricedWord} {priced.length.toLocaleString()}곳
         </p>
         <label className="flex items-center gap-2 text-[13px] text-ink-2">
           <span className="sr-only">정렬</span>
@@ -92,10 +94,13 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
         </p>
       )}
 
+      {sportsSubject && data.sports && <SportsSourceNote voucherCap={data.sports.voucherCap} fetchedAt={data.sports.fetchedAt} />}
+
       {stats && filters.subject && (
         <div className="card mb-4 p-4">
           <p className="text-[13px] text-ink-2">
-            {[data.sigungu, filters.age ? AGE_LABELS[filters.age] : '', SUBJECT_MAP[filters.subject]?.name].filter(Boolean).join(' ')} 신고 교습비 · 교습비 공개 {stats.n}곳
+            {[data.sigungu, filters.age ? AGE_LABELS[filters.age] : '', SUBJECT_MAP[filters.subject]?.name].filter(Boolean).join(' ')}{' '}
+            {sportsSubject ? '바우처 등록 금액 (한도 금액 제외)' : '신고 교습비'} · {pricedWord} {stats.n}곳
           </p>
           <p className="num mt-1 text-[22px] font-bold">
             중앙값 {manwon(stats.median)}
@@ -114,7 +119,11 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
       {hits.length === 0 ? (
         <EmptyState
           title="조건에 맞는 곳이 없어요"
-          desc={filters.subject || filters.age || filters.text ? '과목·대상·검색어를 바꿔 보세요. 교습비를 공개하지 않은 곳은 ‘교습비 공개된 곳만’을 끄면 보여요.' : '이 지역에는 교육청에 등록된 학원·교습소가 없어요.'}
+          desc={
+            filters.subject || filters.age || filters.text
+              ? '과목·대상·검색어를 바꿔 보세요. 금액을 공개하지 않은 곳은 ‘금액 공개된 곳만’을 끄면 보여요.'
+              : '이 지역에는 교육청에 등록된 학원·교습소가 없어요.'
+          }
         />
       ) : (
         <>
@@ -152,7 +161,7 @@ function Filters({ idPrefix, filters, update, showUnknown }: { idPrefix: string;
           onChange={(v) => update({ kind: v === 'all' ? null : v })}
         />
       </div>
-      <Toggle id={`${idPrefix}-priced`} checked={filters.pricedOnly} onChange={(v) => update({ priced: v ? '1' : null })} label="교습비 공개된 곳만" desc="교육청 자료에 비교할 수 있는 월 교습비가 있는 곳" />
+      <Toggle id={`${idPrefix}-priced`} checked={filters.pricedOnly} onChange={(v) => update({ priced: v ? '1' : null })} label="금액 공개된 곳만" desc="교육청 신고 교습비나 스포츠강좌이용권 강좌 금액이 있는 곳" />
       {showUnknown && (
         <Toggle id={`${idPrefix}-unk`} checked={filters.includeUnknown} onChange={(v) => update({ unk: v ? null : '0' })} label="구 미상 학원 포함" desc="주소에 구가 없어 어느 구인지 모르는 같은 시 학원" />
       )}
@@ -268,18 +277,20 @@ export function SearchPage() {
           <div className="mt-4">
             {!region ? (
               <EmptyState title="어느 지역 학원을 찾을까요?" desc="지역(휴대폰은 위쪽 ‘지역 고르기’)에서 시·도와 시·군·구를 골라 주세요." />
-            ) : subject && !subject.inNeis ? (
-              <SportsNotice subjectName={subject.name} />
             ) : (
               <DistrictGate state={district} onRetry={district.reload}>
-                {(data) => (
+                {(data) =>
+                  subject && !subject.inNeis && !data.sports ? (
+                    <SportsNotice subjectName={subject.name} />
+                  ) : (
                   <>
                     <div className="mb-3">
-                      <DataStamp data={data} onReload={district.reload} error={district.error} />
+                      <DataStamp data={data} onReload={district.reload} error={district.error} sports={Boolean(subject && !subject.inNeis)} />
                     </div>
                     <Results data={data} filters={memoFilters} sort={sort} onSort={(s) => update({ sort: s === 'price' ? null : s })} />
                   </>
-                )}
+                  )
+                }
               </DistrictGate>
             )}
           </div>

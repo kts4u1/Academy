@@ -12,6 +12,7 @@ import { useDistrictData, useMarket } from '../hooks';
 import { dotDate, manwon, shortMan, signedPercent, unitPrice } from '../lib/format';
 import { academyPrices, courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
 import { cheaperAlternatives, marketForCourse, marketScopeName } from '../lib/realSearch';
+import { isSports, priceName, sourceShort, VOUCHER_CAP_NOTE } from '../lib/sourceText';
 import { useApp } from '../store/AppContext';
 
 /** 익명 처리된 번호(02-0000-0000 등)는 전화 걸기를 숨긴다 */
@@ -25,7 +26,7 @@ function marketLabel(row: MarketRow, mode: DataMode): string {
 
 function CourseRow({ course, selected, onSelect, rows, academy }: { course: Course; selected: boolean; onSelect: () => void; rows: MarketRow[]; academy: RealAcademy }) {
   const comparable = isComparableCourse(course);
-  const market = comparable ? marketForCourse(rows, academy, course) : null;
+  const market = comparable && !course.voucherCap ? marketForCourse(rows, academy, course) : null;
   const pos = market ? positionOf(course.price, market.row) : null;
   const perSession = pricePerSession(course);
   return (
@@ -50,6 +51,7 @@ function CourseRow({ course, selected, onSelect, rows, academy }: { course: Cour
             {course.sessionsPerWeek && <span>주 {course.sessionsPerWeek}회</span>}
             {course.private && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">1:1 · 비교 제외</span>}
             {course.excluded && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">비교 제외 · {course.excluded}</span>}
+            {course.voucherCap && !course.excluded && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">바우처 한도 금액 · 시세 제외</span>}
             {!course.subjectId && !course.excluded && !course.private && <span>과목 미분류</span>}
           </span>
         </span>
@@ -104,7 +106,7 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
       <div className="flex flex-col gap-4">
         <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px]">
           <b className="block">{academy.name}</b>
-          <span className="text-ink-3">{course ? `${course.name} · 신고 ${manwon(course.price)}` : '교습비 미공개'}</span>
+          <span className="text-ink-3">{course ? `${course.name} · ${academy.source ? '등록' : '신고'} ${manwon(course.price)}` : academy.source ? '금액 정보 없음' : '교습비 미공개'}</span>
         </p>
         <div>
           <label className="label" htmlFor="budget-person">
@@ -123,7 +125,13 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
           </label>
           <input id="budget-amount" className="field num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 32" />
           <p className="mt-1 text-[12px] text-ink-3">
-            {course ? `교육청 신고 교습비는 ${manwon(course.price)}이에요. 할인·교재비 등으로 다르면 실제 금액을 넣어 주세요.` : '교육청에 교습비가 공개되지 않은 곳이에요. 실제로 내는 금액을 넣어 주세요.'}
+            {course
+              ? academy.source
+                ? `스포츠강좌이용권에 등록된 금액은 ${manwon(course.price)}이에요. 바우처 없이 내는 금액이 다르면 실제 금액을 넣어 주세요.`
+                : `교육청 신고 교습비는 ${manwon(course.price)}이에요. 할인·교재비 등으로 다르면 실제 금액을 넣어 주세요.`
+              : academy.source
+                ? '금액 정보가 없는 곳이에요. 실제로 내는 금액을 넣어 주세요.'
+                : '교육청에 교습비가 공개되지 않은 곳이에요. 실제로 내는 금액을 넣어 주세요.'}
           </p>
         </div>
       </div>
@@ -136,7 +144,7 @@ function Detail({ data, id, courseParam }: { data: DistrictData; id: string; cou
   if (!academy) {
     return (
       <EmptyState
-        title="이번 교육청 자료에서 이 학원을 찾지 못했어요"
+        title={/^k[vf]-/.test(id) ? '이번 자료에서 이 체육시설을 찾지 못했어요' : '이번 교육청 자료에서 이 학원을 찾지 못했어요'}
         desc="폐원·휴원했거나 등록 정보가 바뀌었을 수 있어요. 같은 지역에서 다시 검색해 보세요."
         action={
           <Link to={`/search?sido=${encodeURIComponent(data.sido)}&sigungu=${encodeURIComponent(data.sigungu)}`} className="btn-ghost">
@@ -157,7 +165,8 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
     [academy],
   );
   // 같은 이름의 과정이 금액만 다르게 여러 개일 수 있어 이름|금액 키로 고른다
-  const defaultCourse = findCourse(sortedCourses, courseParam) ?? sortedCourses.find(isComparableCourse) ?? sortedCourses[0] ?? null;
+  const defaultCourse =
+    findCourse(sortedCourses, courseParam) ?? sortedCourses.find((c) => isComparableCourse(c) && !c.voucherCap) ?? sortedCourses.find(isComparableCourse) ?? sortedCourses[0] ?? null;
   const [selectedKey, setSelectedKey] = useState<string | null>(defaultCourse ? courseKey(defaultCourse) : null);
   const selected = findCourse(sortedCourses, selectedKey) ?? defaultCourse;
   const region = { sido: data.sido, sigungu: data.sigungu };
@@ -165,7 +174,10 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
 
   const comparable = selected && isComparableCourse(selected) ? selected : null;
   const match = comparable ? marketForCourse(market.rows, academy, comparable) : null;
-  const pos = comparable && match ? positionOf(comparable.price, match.row) : null;
+  // 바우처 한도에 맞춘 금액은 시세 위치를 매기지 않는다
+  const capped = Boolean(comparable?.voucherCap);
+  const pos = comparable && match && !capped ? positionOf(comparable.price, match.row) : null;
+  const sports = isSports(academy);
   const rawAge = match?.row.age ?? null;
   const localPrices = comparable && match && !match.widened ? academyPrices(data.academies, comparable.subjectId!, rawAge) : [];
   const alternatives = comparable ? cheaperAlternatives(data, academy, comparable) : [];
@@ -235,7 +247,7 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
               <span className="text-[11px] text-ink-3">중앙값 {manwon(match.row.median)} · 자세히 ↓</span>
             </span>
           ) : (
-            <span className="text-[12px] text-ink-3">시세 없음</span>
+            <span className="text-[12px] text-ink-3">{capped ? '바우처 한도 금액' : '시세 없음'}</span>
           )}
         </button>
       )}
@@ -245,7 +257,11 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
           <dt className="w-16 shrink-0 text-ink-3">주소</dt>
           <dd className="min-w-0">
             {academy.address || '-'}
-            {academy.unassigned && <span className="block text-[12px] text-ink-3">교육청 자료에 구가 없어 {academy.sigungu}의 어느 구인지 확인하지 못했어요.</span>}
+            {academy.unassigned && (
+              <span className="block text-[12px] text-ink-3">
+                {sourceShort(academy.source)} 자료 주소에 구가 없어 {academy.sigungu}의 어느 구인지 확인하지 못했어요.
+              </span>
+            )}
             {academy.address && (
               <a
                 href={`https://map.naver.com/p/search/${encodeURIComponent(academy.address.replace(/\s*\(.*$/, '').replace(/,.*$/, ''))}`}
@@ -272,24 +288,41 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
             )}
           </dd>
         </div>
-        <div className="flex gap-2">
-          <dt className="w-16 shrink-0 text-ink-3">정원</dt>
-          <dd>{academy.capacity ? `${academy.capacity.toLocaleString()}명` : '-'}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-16 shrink-0 text-ink-3">설립</dt>
-          <dd>{academy.established ? dotDate(academy.established) : '-'}</dd>
-        </div>
+        {!sports && (
+          <>
+            <div className="flex gap-2">
+              <dt className="w-16 shrink-0 text-ink-3">정원</dt>
+              <dd>{academy.capacity ? `${academy.capacity.toLocaleString()}명` : '-'}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-16 shrink-0 text-ink-3">설립</dt>
+              <dd>{academy.established ? dotDate(academy.established) : '-'}</dd>
+            </div>
+          </>
+        )}
         <div className="flex gap-2">
           <dt className="w-16 shrink-0 text-ink-3">자료 갱신</dt>
-          <dd>{academy.loadedAt ? dotDate(academy.loadedAt) : '-'} (교육청)</dd>
+          <dd>
+            {academy.loadedAt ? dotDate(academy.loadedAt) : '-'} ({sourceShort(academy.source)})
+          </dd>
         </div>
       </dl>
 
-      <Section title="교습과정별 신고 교습비" desc="학원이 교육청에 신고한 1인 월 교습비예요. 과정을 고르면 아래에서 시세와 비교해요.">
+      <Section
+        title={academy.source === 'voucher' ? '강좌별 바우처 등록 금액' : academy.source === 'facility' ? '금액' : '교습과정별 신고 교습비'}
+        desc={
+          academy.source === 'voucher'
+            ? '스포츠강좌이용권(저소득층 유·청소년 바우처) 가맹 시설이 국민체육진흥공단에 등록한 1개월 강좌 결제금액이에요. 일반 회원가와 다를 수 있어요.'
+            : academy.source === 'facility'
+              ? undefined
+              : '학원이 교육청에 신고한 1인 월 교습비예요. 과정을 고르면 아래에서 시세와 비교해요.'
+        }
+      >
         {sortedCourses.length === 0 ? (
           <p className="card p-4 text-sm text-ink-2">
-            교육청 자료에 교습비가 공개되지 않았어요. 학원(교습소가 아닌 곳)은 공개 자료에 교습비가 비어 있는 경우가 많아요. 전화로 문의한 금액은 ‘내 학원비’에 넣어 관리할 수 있어요.
+            {academy.source === 'facility'
+              ? `시·군·구에 신고된 체육시설 목록(국민체육진흥공단 전국체육시설 정보)에 있는 곳이라 금액 정보가 없어요${academy.realm ? ` (${[academy.realm, academy.category].filter(Boolean).join(' · ')})` : ''}. 전화로 문의한 금액은 ‘내 학원비’에 넣어 관리할 수 있어요.`
+              : '교육청 자료에 교습비가 공개되지 않았어요. 학원(교습소가 아닌 곳)은 공개 자료에 교습비가 비어 있는 경우가 많아요. 전화로 문의한 금액은 ‘내 학원비’에 넣어 관리할 수 있어요.'}
           </p>
         ) : (
           <>
@@ -327,21 +360,26 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
                 <p className="text-[12px] text-ink-3">
                   {academy.unassigned
                     ? `주소로 구를 정하지 못한 곳이라 ${marketScopeName(match.row, mode)}와 비교했어요.`
-                    : `${academy.sigungu}에 같은 조건으로 교습비를 공개한 곳이 3곳 미만이라 범위를 넓혀 비교했어요.`}
+                    : `${academy.sigungu}에 같은 조건으로 금액을 공개한 곳이 3곳 미만이라 범위를 넓혀 비교했어요.`}
                 </p>
               )}
               {localPrices.length >= 5 && (
                 <Histogram values={localPrices} median={match.row.median} marker={{ value: comparable.price, label: '이 과정' }} format={manwon} tickFormat={shortMan} unitLabel="곳" />
               )}
             </div>
+          ) : capped ? (
+            <p className="card p-4 text-sm text-ink-2">
+              {comparable.name} {manwon(comparable.price)}은(는) {VOUCHER_CAP_NOTE}.
+              {match ? ` ${marketLabel(match.row, mode)} 중앙값은 ${manwon(match.row.median)}이에요 (보통 ${manwon(match.row.p25)} ~ ${manwon(match.row.p75)}).` : ''}
+            </p>
           ) : (
-            <p className="card p-4 text-sm text-ink-2">같은 과목·대상으로 교습비를 공개한 곳이 3곳 미만이라 아직 시세를 낼 수 없어요.</p>
+            <p className="card p-4 text-sm text-ink-2">같은 과목·대상으로 금액을 공개한 곳이 3곳 미만이라 아직 시세를 낼 수 없어요.</p>
           )}
         </Section>
       )}
 
       {alternatives.length > 0 && comparable && (
-        <Section title="같은 동네에서 더 저렴한 곳" desc={`${SUBJECT_MAP[comparable.subjectId!]?.name ?? ''}${comparable.ages.length === 1 ? ` · ${AGE_LABELS[comparable.ages[0]]}` : ''} 과정 신고 교습비 기준`}>
+        <Section title="같은 동네에서 더 저렴한 곳" desc={`${SUBJECT_MAP[comparable.subjectId!]?.name ?? ''}${comparable.ages.length === 1 ? ` · ${AGE_LABELS[comparable.ages[0]]}` : ''} 과정 ${priceName(academy.source)} 기준`}>
           <ul className="card divide-y divide-line">
             {alternatives.map(({ academy: a, course }) => (
               <li key={a.id}>
@@ -364,8 +402,14 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
       )}
 
       <div className="mt-6">
-        <DataStamp data={data} />
-        <p className="mt-1 text-[12px] text-ink-3">신고 교습비는 실제 받는 금액(할인·교재비·차량비 등)과 다를 수 있어요. 등록 전 학원에 꼭 확인하세요.</p>
+        <DataStamp data={data} sports={sports} />
+        <p className="mt-1 text-[12px] text-ink-3">
+          {academy.source === 'facility'
+            ? '시·군·구 신고 정보는 바뀌었을 수 있어요. 운영 시간과 금액은 시설에 꼭 확인하세요.'
+            : sports
+            ? '바우처 등록 금액은 실제 회원가(바우처 없이 내는 금액·용품비 등)와 다를 수 있어요. 등록 전 시설에 꼭 확인하세요.'
+            : '신고 교습비는 실제 받는 금액(할인·교재비·차량비 등)과 다를 수 있어요. 등록 전 학원에 꼭 확인하세요.'}
+        </p>
       </div>
 
       {budgetOpen && <AddToBudget open onClose={() => setBudgetOpen(false)} academy={academy} course={comparable ?? selected} data={data} />}

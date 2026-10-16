@@ -33,6 +33,13 @@ export function DataInfoPage() {
               <b className="text-ink">{manifest.totals.academies.toLocaleString()}곳</b> 중 교습비가 공개된 곳은 {manifest.totals.priced.toLocaleString()}곳, 신고된 교습과정은{' '}
               {manifest.totals.courses.toLocaleString()}개예요.
             </p>
+            {manifest.sports && (
+              <p className="mt-2">
+                체육시설은 국민체육진흥공단 자료를 <b className="text-ink">{kstDate(manifest.sports.fetchedAt)}</b>에 받았어요. 강좌 금액이 있는 곳(스포츠강좌이용권){' '}
+                <b className="text-ink">{manifest.sports.priced.toLocaleString()}곳</b>(강좌 {manifest.sports.courses.toLocaleString()}개), 금액 없이 목록만 있는 곳{' '}
+                {manifest.sports.listed.toLocaleString()}곳이에요.
+              </p>
+            )}
             {manifest.sampleMode && <p className="mt-2 font-semibold text-pricey">지금은 인증키 없이 받은 표본(일부 학원)이라 숫자가 실제보다 훨씬 적어요.</p>}
             {manifest.totals.unassigned > 0 && (
               <p className="mt-2 text-[13px]">
@@ -54,6 +61,20 @@ export function DataInfoPage() {
             <span className="text-ink-2">
               나이스 교육정보 개방 포털 ‘학원교습소정보’. 인증키가 있으면 Open API(acaInsTiInfo)로 전국 17개 시·도교육청 자료를 매주 받고, 없거나 API 가 실패하면 교육청이
               매달 올리는 전국 파일(CSV)을 써요. 휴원·폐원한 곳은 빼요.
+            </span>
+          </li>
+          <li className="px-4 py-3">
+            <b className="block text-[14px]">체육시설 강좌 금액 (수영·태권도·복싱 등)</b>
+            <span className="text-ink-2">
+              공공데이터포털 ‘국민체육진흥공단 스포츠강좌이용권 등록강좌·등록시설 정보’. 저소득층 유·청소년 바우처(스포츠강좌이용권) 가맹 시설이 등록한 1개월 강좌 결제금액이에요.
+              가맹 시설만 들어 있고 일반 회원가와 다를 수 있어요. 대표자·강사 이름 같은 개인정보는 받지 않아요.
+            </span>
+          </li>
+          <li className="px-4 py-3">
+            <b className="block text-[14px]">체육시설 목록 (금액 없음)</b>
+            <span className="text-ink-2">
+              공공데이터포털 ‘국민체육진흥공단 전국체육시설 정보’. 시·군·구에 신고된 체육도장·체육교습업·수영장·인공암벽장·골프연습장과 공공 수영장·테니스장 가운데 정상
+              운영 중인 곳이에요. 바우처 가맹 시설과 같은 곳이면 하나로 합쳐요.
             </span>
           </li>
           <li className="px-4 py-3">
@@ -89,13 +110,21 @@ export function DataInfoPage() {
           <li>같은 시·군·구에 같은 과목·대상으로 교습비를 공개한 곳이 {MIN_MARKET_N}곳 이상일 때 시세를 내요. 모자라면 시·도 전체로 넓혀요.</li>
           <li>과정을 여러 개 신고한 곳이 시세를 좌우하지 않게, 학원마다 해당 과정 금액의 중앙값 하나만 세요.</li>
           <li>‘저렴·평균·비쌈’은 같은 조건 학원들 사이에서의 위치예요 (하위 40% 미만 저렴, 60% 넘으면 비쌈).</li>
+          <li>
+            체육시설 강좌는 절반 가까이가 바우처 월 지원 한도와 똑같은 금액이라 시장 가격으로 보기 어려워요. 이런 강좌는 목록에는 보여 주되 시세·비교에서는 빼요. 한도의 2~3배(여러 달
+            치 결제), 체험·회차권·1:1 레슨·추가 요금도 빼요. 대상이 적혀 있지 않은 바우처 강좌는 유아~고등 대상으로 봐요.
+          </li>
+          <li>체육 시세는 교육청 교습비와 섞지 않고 체육 종목끼리만 계산해요.</li>
         </ul>
       </Section>
 
       <Section title="알아 둘 한계">
         <ul className="card flex list-disc flex-col gap-1.5 py-4 pl-9 pr-4 text-[13px] text-ink-2">
           <li>교습소는 교습비가 대부분 공개돼 있지만, 학원은 공개 자료에 교습비가 비어 있는 경우가 많아요. 이런 곳도 목록에는 보여 주고 ‘교습비 미공개’로 표시해요.</li>
-          <li>수영·태권도·복싱·주짓수·구기 같은 체육시설은 체육시설법 대상이라 교육청 자료에 없어요. 공식 가격 자료도 없어 비워 둬요.</li>
+          <li>
+            수영·태권도·복싱 같은 체육시설은 체육시설법 대상이라 교육청 자료에 없어요. 민간 체육시설의 실제 회원가를 모은 공개 자료는 없어서, 바우처 가맹 시설의 등록 금액만
+            보여 드려요. 킥복싱·주짓수처럼 법정 분류가 없는 종목은 상호·강좌 이름으로 가려요.
+          </li>
           <li>교육청 자료는 학원이 신고를 바꿀 때 갱신돼서, 학원마다 ‘자료 갱신일’이 달라요.</li>
           <li>교육청 자료에는 시 이름만 있는 경우가 많아(성남시·수원시 등), 주소의 동으로 구를 찾아요. 동이 없으면 ‘구 미상’이에요.</li>
         </ul>

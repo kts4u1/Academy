@@ -20,10 +20,16 @@ export interface MarketMatch {
  * (고등 수학을 전체 연령 시세와 견주면 늘 비싸 보이므로), 대상이 없거나 여럿이면 과목 전체 시세를 쓴다.
  * 시·군·구에 표본이 부족하면 시·도 전체(브라우저에서 받은 경우는 받은 지역 전체)로 넓힌다.
  */
-export function marketForCourse(rows: MarketRow[], academy: Pick<RealAcademy, 'sido' | 'sigungu' | 'unassigned'>, course: Pick<Course, 'subjectId' | 'ages'>, ageHint?: AgeGroup | null): MarketMatch | null {
+export function marketForCourse(
+  rows: MarketRow[],
+  academy: Pick<RealAcademy, 'sido' | 'sigungu' | 'unassigned'>,
+  course: Pick<Course, 'subjectId' | 'ages' | 'agesInferred'>,
+  ageHint?: AgeGroup | null,
+): MarketMatch | null {
   if (!course.subjectId) return null;
   const sigungu = academy.unassigned ? '' : academy.sigungu;
-  const age = ageHint ?? (course.ages.length === 1 ? course.ages[0] : null);
+  // 짐작한 대상의 과정은 대상 '전체' 시세와 비교한다 (대상별 시세에는 넣지 않았다)
+  const age = course.agesInferred ? null : (ageHint ?? (course.ages.length === 1 ? course.ages[0] : null));
   const row = marketFor(rows, academy.sido, sigungu, course.subjectId, age);
   return row ? { row, widened: Boolean(academy.unassigned) || row.sigungu !== academy.sigungu } : null;
 }
@@ -240,10 +246,9 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
   }
   const byName = (x: SearchHit, y: SearchHit) => x.academy.name.localeCompare(y.academy.name, 'ko');
   // 교습비를 모르는 곳은 가격 정렬에서 늘 뒤로
-  const priced = (fn: (x: SearchHit, y: SearchHit) => number) => (x: SearchHit, y: SearchHit) => {
-    if (!x.rep !== !y.rep) return x.rep ? -1 : 1;
-    return fn(x, y) || byName(x, y);
-  };
+  // 실제 금액 → 바우처 한도 금액만 있는 곳 → 금액을 모르는 곳 순
+  const tier = (h: SearchHit) => (!h.rep ? 2 : h.rep.voucherCap ? 1 : 0);
+  const priced = (fn: (x: SearchHit, y: SearchHit) => number) => (x: SearchHit, y: SearchHit) => tier(x) - tier(y) || fn(x, y) || byName(x, y);
   const cmp: Record<SortKey, (x: SearchHit, y: SearchHit) => number> = {
     price: priced((x, y) => (x.rep && y.rep ? x.rep.price - y.rep.price : 0)),
     price_desc: priced((x, y) => (x.rep && y.rep ? y.rep.price - x.rep.price : 0)),

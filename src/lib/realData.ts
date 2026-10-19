@@ -22,6 +22,13 @@ export interface Course {
   private?: boolean;
   /** 스포츠강좌이용권 월 지원 한도와 똑같은 금액 (바우처에 맞춘 금액이라 시세에서 뺀다) */
   voucherCap?: boolean;
+  /** 대상이 이름에 없어 짐작한 연령(바우처 유·청소년). 대상 거르기에만 쓰고 화면·대상별 시세에는 쓰지 않는다 */
+  agesInferred?: boolean;
+}
+
+/** 화면에 보여 줄 대상 (짐작한 대상은 보여 주지 않는다) */
+export function shownAges(c: Pick<Course, 'ages' | 'agesInferred'>): AgeGroup[] {
+  return c.agesInferred ? [] : c.ages;
 }
 
 export interface RealAcademy {
@@ -233,7 +240,7 @@ export function buildMarket(academies: RealAcademy[]): MarketRow[] {
       const scopes = a.unassigned ? [''] : [a.sigungu, ''];
       for (const sg of scopes) {
         add(a.sido, sg, c.subjectId!, null, c.price, a.id);
-        for (const age of c.ages) add(a.sido, sg, c.subjectId!, age, c.price, a.id);
+        for (const age of shownAges(c)) add(a.sido, sg, c.subjectId!, age, c.price, a.id);
       }
     }
   }

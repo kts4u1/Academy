@@ -39,6 +39,8 @@ export interface CalcItem {
   reportedPrice?: number;
   /** 특강·1:1 처럼 월 시세와 비교하지 않는 과정 */
   noMarket?: boolean;
+  /** 바우처 월 지원 한도와 같은 금액 그대로 넣음 (실제 내는 금액으로 바꿀 때까지 시세와 비교하지 않는다) */
+  voucherCap?: boolean;
 }
 
 export type ThemePref = 'system' | 'light' | 'dark';

@@ -9,7 +9,7 @@ import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
 import type { DataMode } from '../data/source';
 import { useDistricts, useMarket } from '../hooks';
 import { dotDate, manwon, unitPrice } from '../lib/format';
-import { courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
+import { courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, shownAges, type Course, type RealAcademy } from '../lib/realData';
 import { marketForCourse, marketScopeName, type MarketMatch } from '../lib/realSearch';
 import { MAX_COMPARE, useApp, type CompareItem } from '../store/AppContext';
 import { loadedOf, noPriceText, priceName, sourceShort } from '../lib/sourceText';
@@ -106,7 +106,7 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
             <dt className="text-ink-3">과목·대상</dt>
             <dd className="mt-0.5 font-medium">
               {c.course?.subjectId ? SUBJECT_MAP[c.course.subjectId]?.name : (c.academy.subjects.map((id) => SUBJECT_MAP[id]?.name).join('·') || '-')}
-              {c.course && c.course.ages.length > 0 && ` · ${c.course.ages.map((a) => AGE_LABELS[a]).join('·')}`}
+              {c.course && shownAges(c.course).length > 0 && ` · ${shownAges(c.course).map((a) => AGE_LABELS[a]).join('·')}`}
             </dd>
           </div>
           <div>
@@ -178,7 +178,9 @@ export function ComparePage() {
   });
 
   const priced = columns.filter((c) => c.course);
-  const minPrice = priced.length > 1 ? Math.min(...priced.map((c) => c.course!.price)) : null;
+  // '최저'는 바우처 한도 금액이 아닌 금액끼리
+  const rankable = priced.filter((c) => !c.course!.voucherCap);
+  const minPrice = rankable.length > 1 ? Math.min(...rankable.map((c) => c.course!.price)) : null;
   const subjects = new Set(priced.map((c) => c.course!.subjectId ?? '?'));
   const ageSets = new Set(priced.map((c) => c.course!.ages.join(',')));
   const anySports = columns.some((c) => c.academy?.source);
@@ -315,7 +317,7 @@ export function ComparePage() {
               {columns.map((c) => (
                 <Cell key={c.item.ref.id}>
                   {c.course?.subjectId ? <SubjectChips subjectIds={[c.course.subjectId]} /> : c.academy?.subjects.length ? <SubjectChips subjectIds={c.academy.subjects} /> : '-'}
-                  {c.course && c.course.ages.length > 0 && <span className="mt-1 block text-[12px] text-ink-2">{c.course.ages.map((a) => AGE_LABELS[a]).join(' · ')}</span>}
+                  {c.course && shownAges(c.course).length > 0 && <span className="mt-1 block text-[12px] text-ink-2">{shownAges(c.course).map((a) => AGE_LABELS[a]).join(' · ')}</span>}
                 </Cell>
               ))}
             </tr>

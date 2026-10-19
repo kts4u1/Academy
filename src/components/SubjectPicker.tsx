@@ -20,13 +20,14 @@ function Chip({ id, pressed, onClick }: { id: string | null; pressed: boolean; o
 
 /**
  * 검색 화면의 과목 고르기.
- * 넓은 화면: 교과·예술 과목을 줄바꿈해서 모두 보여 준다.
+ * 넓은 화면: 교과·예술·체육 과목을 줄바꿈해서 모두 보여 준다.
  * 휴대폰: 한 줄로 밀어서 보고, '전체 과목' 버튼으로 모든 과목을 아이콘 격자로 연다.
  */
 export function SubjectPicker({ value, onChange }: { value: string; onChange: (subject: string | null) => void }) {
   const [open, setOpen] = useState(false);
   const { manifest } = useManifest();
-  const groups = GROUPS.filter((g) => g.id !== 'sports');
+  // 교과 → 예술 → 체육
+  const groups = [...GROUPS].sort((a, b) => Number(a.id === 'sports') - Number(b.id === 'sports'));
   const rowRef = useRef<HTMLDivElement>(null);
   // 양쪽 끝에 더 있으면 흐리게 표시한다
   const [edges, setEdges] = useState({ start: false, end: true });

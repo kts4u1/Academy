@@ -12,7 +12,7 @@
 // 가린 이름·전화 뒷자리가 적힌 개인 결제창 강좌는 통째로 버린다 (src/lib/privacy.ts).
 // 인증키가 없으면 아무것도 하지 않고 끝낸다. 받다가 실패하면 오류로 끝나며, 교육청 자료 배포는 막지 않는다.
 
-import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isPersonalSlot, scrubContacts } from '../src/lib/privacy';
@@ -29,6 +29,8 @@ interface Dataset {
   url: string;
   /** 남길 필드 (이 밖의 값은 버린다) */
   keep: string[];
+  /** 응답에 꼭 있어야 하는 필드 (없으면 API 형식이 바뀐 것으로 보고 지난 원자료를 그대로 둔다) */
+  required: string[];
 }
 
 const DATASETS: Dataset[] = [
@@ -38,12 +40,14 @@ const DATASETS: Dataset[] = [
     url: 'https://apis.data.go.kr/B551014/SRVC_OD_API_FACIL_COURSE/todz_api_facil_course_i',
     // 강좌 설명·시간·강사는 쓰지 않아 받지 않는다 (개인정보가 섞일 수 있다)
     keep: ['brno', 'facil_sn', 'item_cd', 'item_nm', 'course_nm', 'settl_amt'],
+    required: ['brno', 'facil_sn', 'item_nm', 'course_nm', 'settl_amt'],
   },
   {
     id: 'facilities',
     name: '스포츠강좌이용권 등록시설 정보',
     url: 'https://apis.data.go.kr/B551014/SRVC_OD_API_FACIL_MNG/todz_api_facil_mng_i',
     keep: ['brno', 'facil_sn', 'city_cd', 'city_nm', 'local_cd', 'local_nm', 'facil_nm', 'faci_zip', 'road_addr', 'faci_daddr', 'main_event_cd', 'main_event_nm', 'facil_gbn_nm'],
+    required: ['brno', 'facil_sn', 'facil_nm', 'road_addr'],
   },
   {
     id: 'national',
@@ -54,6 +58,7 @@ const DATASETS: Dataset[] = [
       'faci_lot', 'faci_lat', 'faci_tel_no', 'faci_homepage', 'cp_nm', 'cpb_nm', 'addr_ctpv_nm', 'addr_cpb_nm', 'addr_emd_nm', 'fmng_type_gb_nm',
       'inout_gbn_nm', 'faci_reg_ymd', 'th_ymd', 'sdwn_ymd', 'updt_dt',
     ],
+    required: ['faci_cd', 'faci_nm', 'faci_stat_nm', 'fcob_nm'],
   },
 ];
 
@@ -224,9 +229,11 @@ async function main() {
   const fetchedAt = new Date().toISOString();
   const results: { id: string; name: string; total: number; count: number; keys: string[] }[] = [];
   const data = new Map<string, Row[]>();
+  const previous = previousCounts();
   for (const ds of DATASETS) {
     console.log(`${ds.name} …`);
     const r = await fetchAll(ds, key);
+    checkSane(ds, r, previous.get(ds.id));
     const missing = ds.keep.filter((k) => !r.keys.includes(k));
     console.log(`  ${r.rows.length.toLocaleString()} / ${r.total.toLocaleString()}건 · 필드 ${r.keys.join(', ')}`);
     if (missing.length) console.log(`  (명세에 있지만 응답에 없는 필드: ${missing.join(', ')})`);
@@ -243,6 +250,27 @@ async function main() {
   renameSync(tmpDir, rawDir);
   markFetched();
   console.log(`완료: ${results.map((r) => `${r.name} ${r.count.toLocaleString()}건`).join(' · ')}`);
+}
+
+/** 지난번에 받은 건수 (.sports-raw/meta.json) */
+function previousCounts(): Map<string, number> {
+  try {
+    const meta = JSON.parse(readFileSync(join(rawDir, 'meta.json'), 'utf8')) as { datasets: { id: string; count: number }[] };
+    return new Map(meta.datasets.map((d) => [d.id, d.count]));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * 받은 자료가 멀쩡한지: 0건이거나, 꼭 있어야 할 필드가 없거나, 지난번의 절반도 안 되면 오류로 끝내서
+ * 지난 원자료를 그대로 쓰게 한다.
+ */
+export function checkSane(ds: Pick<Dataset, 'name' | 'required'>, r: { total: number; rows: unknown[]; keys: string[] }, previous?: number): void {
+  if (r.total === 0 || r.rows.length === 0) throw new Error(`${ds.name}: 0건이 왔습니다.`);
+  const missing = ds.required.filter((k) => !r.keys.includes(k));
+  if (missing.length) throw new Error(`${ds.name}: 꼭 있어야 할 필드가 없습니다 (${missing.join(', ')}). API 형식이 바뀌었을 수 있습니다.`);
+  if (previous && r.rows.length < previous * 0.5) throw new Error(`${ds.name}: ${r.rows.length.toLocaleString()}건으로 지난번(${previous.toLocaleString()}건)의 절반도 안 됩니다.`);
 }
 
 /** GitHub Actions 에 '새로 받음'을 알린다 (보관·업로드 단계는 이때만 돈다) */

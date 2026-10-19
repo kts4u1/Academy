@@ -10,7 +10,7 @@ import { AGE_LABELS, SUBJECT_MAP } from '../data/categories';
 import type { DataMode, DistrictData } from '../data/source';
 import { useDistrictData, useMarket } from '../hooks';
 import { dotDate, manwon, shortMan, signedPercent, unitPrice } from '../lib/format';
-import { academyPrices, courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
+import { academyPrices, courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, shownAges, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
 import { cheaperAlternatives, marketForCourse, marketScopeName } from '../lib/realSearch';
 import { isSports, loadedOf, priceName, sourceShort, VOUCHER_CAP_NOTE } from '../lib/sourceText';
 import { useApp } from '../store/AppContext';
@@ -43,7 +43,7 @@ function CourseRow({ course, selected, onSelect, rows, academy }: { course: Cour
           <span className="block text-[14px] font-medium leading-snug">{course.name}</span>
           <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-ink-3">
             {course.subjectId && <SubjectChips subjectIds={[course.subjectId]} />}
-            {course.ages.map((a) => (
+            {shownAges(course).map((a) => (
               <span key={a} className="rounded-md bg-surface-2 px-1.5 py-0.5 font-semibold text-ink-2">
                 {AGE_LABELS[a]}
               </span>
@@ -69,7 +69,8 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
   const { addCalc, calc, showToast } = useApp();
   const people = Array.from(new Set(calc.map((c) => c.person)));
   const [person, setPerson] = useState(people[0] ?? '첫째');
-  const [amount, setAmount] = useState(course ? String(course.price / 10000) : '');
+  // 바우처 한도 금액은 실제 강습비가 아닐 수 있어 미리 채우지 않는다
+  const [amount, setAmount] = useState(course && !course.voucherCap ? String(course.price / 10000) : '');
   const monthly = Math.round(Number(amount) * 10000);
   return (
     <Sheet
@@ -87,13 +88,14 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
               name: academy.name + (course ? ` · ${course.name}` : ''),
               monthly,
               subjectId: course?.subjectId ?? academy.subjects[0] ?? null,
-              age: course && course.ages.length === 1 ? course.ages[0] : null,
+              age: course && shownAges(course).length === 1 ? course.ages[0] : null,
               sido: academy.sido,
               sigungu: academy.unassigned ? data.sigungu : academy.sigungu,
               ref: refOf(academy, data),
               course: course ? courseKey(course) : undefined,
               reportedPrice: course?.price,
               ...(course && !isComparableCourse(course) ? { noMarket: true } : {}),
+              ...(course?.voucherCap && monthly === course.price ? { voucherCap: true } : {}),
             });
             onClose();
             showToast('내 학원비에 추가했어요');
@@ -126,7 +128,9 @@ function AddToBudget({ open, onClose, academy, course, data }: { open: boolean; 
           <input id="budget-amount" className="field num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 32" />
           <p className="mt-1 text-[12px] text-ink-3">
             {course
-              ? academy.source
+              ? course.voucherCap
+                ? `바우처 월 지원 한도와 같은 금액(${manwon(course.price)})이라 실제 강습비가 아닐 수 있어요. 실제로 내는 금액을 넣어 주세요.`
+                : academy.source
                 ? `스포츠강좌이용권에 등록된 금액은 ${manwon(course.price)}이에요. 바우처 없이 내는 금액이 다르면 실제 금액을 넣어 주세요.`
                 : `교육청 신고 교습비는 ${manwon(course.price)}이에요. 할인·교재비 등으로 다르면 실제 금액을 넣어 주세요.`
               : academy.source
@@ -379,7 +383,7 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
       )}
 
       {alternatives.length > 0 && comparable && (
-        <Section title="같은 동네에서 더 저렴한 곳" desc={`${SUBJECT_MAP[comparable.subjectId!]?.name ?? ''}${comparable.ages.length === 1 ? ` · ${AGE_LABELS[comparable.ages[0]]}` : ''} 과정 ${priceName(academy.source)} 기준`}>
+        <Section title="같은 동네에서 더 저렴한 곳" desc={`${SUBJECT_MAP[comparable.subjectId!]?.name ?? ''}${shownAges(comparable).length === 1 ? ` · ${AGE_LABELS[comparable.ages[0]]}` : ''} 과정 ${priceName(academy.source)} 기준`}>
           <ul className="card divide-y divide-line">
             {alternatives.map(({ academy: a, course }) => (
               <li key={a.id}>

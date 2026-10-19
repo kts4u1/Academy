@@ -35,6 +35,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       pages: ${{ steps.pages.outputs.enabled }}
+      sports: ${{ steps.sports.outcome }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +74,14 @@ jobs:
 
       - name: 받은 체육 원자료 보관
         if: steps.sports.outputs.fetched == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .sports-raw
+          key: sports-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
+
+      # 새로 받지 못한 실행에서도 지난 원자료를 다시 보관한다 (Actions 캐시는 7일 동안 안 쓰면 지워진다)
+      - name: 지난 체육 원자료 다시 보관
+        if: steps.sports.outputs.fetched != 'true' && steps.sports-cache.outputs.cache-matched-key != '' && hashFiles('.sports-raw/meta.json') != ''
         uses: actions/cache/save@v4
         with:
           path: .sports-raw
@@ -147,3 +156,14 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # 체육 자료를 새로 받지 못했으면 (배포는 그대로 하고) 실행을 실패로 표시해 알림이 가게 한다
+  sports-alert:
+    needs: [build, deploy]
+    if: always() && needs.build.outputs.sports == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "### 체육 자료를 새로 받지 못해 지난 원자료로 만들었습니다" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::체육 자료(국민체육진흥공단)를 받지 못했습니다. 인증키(DATA_GO_KR_KEY)와 공공데이터포털 상태를 확인하세요."
+          exit 1

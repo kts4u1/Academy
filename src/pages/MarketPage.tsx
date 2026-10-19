@@ -151,7 +151,7 @@ export function MarketPage() {
           />
         ) : (
           <>
-            {sportsSelected && district.data?.sports && <SportsSourceNote voucherCap={district.data.sports.voucherCap} fetchedAt={district.data.sports.fetchedAt} />}
+            {sportsSelected && district.data?.sports && <SportsSourceNote voucherCap={district.data.sports.voucherCap} />}
             <div className="card p-4">
               <div className="flex items-center gap-3">
                 <SubjectTile subjectId={subjectId} />

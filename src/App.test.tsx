@@ -181,13 +181,14 @@ describe('App', () => {
     window.location.hash = '#/search?sido=서울&sigungu=강남구&subject=taekwondo';
     render(<App />);
     const cards = await screen.findAllByRole('article');
-    expect(cards.map((c) => c.querySelector('h3')?.textContent)).toEqual(['사아태권도', '다라태권도', '가나태권도', '마바태권도', '목록태권도']);
-    expect(screen.getByText(/국민체육진흥공단 자료/)).toBeInTheDocument();
+    // 실제 금액 → 바우처 한도 금액만 있는 곳 → 금액 없는 곳
+    expect(cards.map((c) => c.querySelector('h3')?.textContent)).toEqual(['다라태권도', '가나태권도', '마바태권도', '사아태권도', '목록태권도']);
+    expect(screen.getByText(/체육시설 금액은 스포츠강좌이용권/)).toBeInTheDocument();
     // 한도 금액(10.5만원)은 시세에서 빼고, 배지도 붙이지 않는다
-    expect(cards[0]).toHaveTextContent('바우처 월 지원 한도와 같은 금액이라 시세 비교에서 뺐어요');
-    expect(cards[0]).not.toHaveTextContent('중앙값');
-    expect(cards[1]).toHaveTextContent('/ 월 · 바우처 등록 금액');
-    expect(cards[1]).toHaveTextContent('중앙값 15만원');
+    expect(cards[3]).toHaveTextContent('바우처 월 지원 한도와 같은 금액이라 시세 비교에서 뺐어요');
+    expect(cards[3]).not.toHaveTextContent('중앙값');
+    expect(cards[0]).toHaveTextContent('/ 월 · 바우처 등록 금액');
+    expect(cards[0]).toHaveTextContent('중앙값 15만원');
     expect(cards[4]).toHaveTextContent('금액 정보가 없어요');
     // 전체 과목 목록에는 체육시설이 섞이지 않는다
   });

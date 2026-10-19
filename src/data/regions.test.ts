@@ -63,7 +63,9 @@ describe('교육청 자료 → 앱 시·군·구 배정', () => {
   it('화성시 동탄구는 도로명·법정동 단서로 찾는다', () => {
     expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 동탄대로 1, 3층'))).toEqual({ sigungu: '화성시 동탄구' });
     expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 노작로 1, 2층 (반송동)'))).toEqual({ sigungu: '화성시 동탄구' });
-    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 봉담읍 어딘가로 1'))).toEqual({ bucket: '화성시' });
+    // 도로명 주소 본문의 읍·면으로도 구를 찾는다
+    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 봉담읍 어딘가로 1'))).toEqual({ sigungu: '화성시 효행구' });
+    expect(resolveNeisDistrict('경기', row('화성시', '경기도 화성시 향남읍 행정중앙1로 14'))).toEqual({ sigungu: '화성시 만세구' });
   });
 
   it('청주는 교육청 자료가 구 단위', () => {

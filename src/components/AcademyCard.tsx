@@ -2,7 +2,7 @@ import { Check, Heart, MapPin, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AGE_LABELS } from '../data/categories';
 import { manwon } from '../lib/format';
-import { courseKey, type RealAcademy } from '../lib/realData';
+import { courseKey, shownAges, type RealAcademy } from '../lib/realData';
 import { marketScopeName, type SearchHit } from '../lib/realSearch';
 import type { DataMode } from '../data/source';
 import { useApp } from '../store/AppContext';
@@ -90,9 +90,9 @@ export function AcademyCard({ hit, region, mode }: { hit: SearchHit; region: { s
             <p className="truncate text-[12px] text-ink-3" title={rep.name}>
               {courses.length > 1 ? '대표 과정 · ' : ''}
               {rep.name}
-              {rep.ages.length > 0 && ` · ${rep.ages.map((a) => AGE_LABELS[a]).join('·')}`}
+              {shownAges(rep).length > 0 && ` · ${shownAges(rep).map((a) => AGE_LABELS[a]).join('·')}`}
             </p>
-            <p className="num text-[20px] font-bold leading-tight tracking-tight">
+            <p className={`num text-[20px] font-bold leading-tight tracking-tight ${rep.voucherCap ? 'text-ink-2' : ''}`}>
               {manwon(rep.price)}
               <span className="ml-1 text-[12px] font-medium text-ink-3">{priceUnit(academy.source)}</span>
             </p>

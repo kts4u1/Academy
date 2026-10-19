@@ -150,6 +150,9 @@ function guOfRow(r: NeisLocated, cityName: string, guDongs: Map<string, Set<stri
   const m = r.roadAddress.match(new RegExp(`${cityName}\\s+(\\S+구)\\s`));
   if (m && guDongs.has(m[1])) return m[1];
   const dongs = addressDongs(r.address);
+  // 도로명 주소 본문의 읍·면 ('경기도 화성시 봉담읍 …'). 도로 이름('동탄대로')은 읍·면으로 끝나지 않아 걸리지 않는다
+  const eupMyeon = r.roadAddress.match(new RegExp(`${cityName}\\s+(?:\\S+구\\s+)?([가-힣0-9]+(?:읍|면))\\s`));
+  if (eupMyeon) dongs.push(eupMyeon[1]);
   const hits = new Set<string>();
   for (const [gu, set] of guDongs) if (dongs.some((d) => set.has(d))) hits.add(gu);
   if (hits.size === 1) return Array.from(hits)[0];

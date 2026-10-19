@@ -12,6 +12,7 @@ import { findDistrict } from '../data/regions';
 import type { DistrictData } from '../data/source';
 import { useDistrictData, useMarket } from '../hooks';
 import { manwon, shortMan } from '../lib/format';
+import { MIN_MARKET_N } from '../lib/realData';
 import { searchAcademies, SORT_OPTIONS, type SearchFilters, type SortKey } from '../lib/realSearch';
 import { summarize } from '../lib/stats';
 import { useApp } from '../store/AppContext';
@@ -63,7 +64,9 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
   // 시세와 같은 기준: 학원마다 대표 과정 금액 하나 (바우처 한도에 맞춘 금액은 뺀다)
   const prices = useMemo(() => (filters.subject ? hits.flatMap((h) => (h.rep && !h.rep.voucherCap ? [h.rep.price] : [])) : []), [hits, filters.subject]);
   const sportsSubject = Boolean(filters.subject && SUBJECT_MAP[filters.subject] && !SUBJECT_MAP[filters.subject].inNeis);
-  const pricedWord = sportsSubject ? '금액 공개' : '교습비 공개';
+  // 이름으로 찾았을 때도 체육시설이 섞이면 금액 말과 출처 안내를 맞춘다
+  const anySports = hits.some((h) => h.academy.source);
+  const pricedWord = sportsSubject || anySports ? '금액 공개' : '교습비 공개';
   const stats = summarize(prices);
   const region = { sido: data.sido, sigungu: data.sigungu };
   // 시세가 늦게 오면 정렬·배지가 바뀌어 보이므로 다 받은 뒤에 보여 준다
@@ -94,13 +97,20 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
         </p>
       )}
 
-      {sportsSubject && data.sports && <SportsSourceNote voucherCap={data.sports.voucherCap} fetchedAt={data.sports.fetchedAt} />}
+      {(sportsSubject || anySports) && data.sports && <SportsSourceNote voucherCap={data.sports.voucherCap} />}
 
-      {stats && filters.subject && (
+      {stats && filters.subject && stats.n < MIN_MARKET_N && (
+        <p className="mb-3 text-[12px] text-ink-3">
+          {sportsSubject ? '비교할 수 있는 금액' : '교습비'}을 공개한 곳이 {stats.n}곳뿐이라 이 지역 시세(중앙값)는 내지 않았어요. 시세 화면에서 시·도 기준으로 볼 수 있어요.
+        </p>
+      )}
+
+      {stats && filters.subject && stats.n >= MIN_MARKET_N && (
         <div className="card mb-4 p-4">
           <p className="text-[13px] text-ink-2">
             {[data.sigungu, filters.age ? AGE_LABELS[filters.age] : '', SUBJECT_MAP[filters.subject]?.name].filter(Boolean).join(' ')}{' '}
-            {sportsSubject ? '바우처 등록 금액 (한도 금액 제외)' : '신고 교습비'} · {pricedWord} {stats.n}곳
+            {sportsSubject ? '바우처 등록 금액' : '신고 교습비'} ·{' '}
+            {stats.n === priced.length ? `${pricedWord} ${stats.n}곳` : `시세에 넣은 곳 ${stats.n}곳 (바우처 한도 금액 ${priced.length - stats.n}곳 제외)`}
           </p>
           <p className="num mt-1 text-[22px] font-bold">
             중앙값 {manwon(stats.median)}

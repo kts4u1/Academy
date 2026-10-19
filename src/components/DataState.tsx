@@ -108,12 +108,11 @@ export function DataStamp({ data, onReload, error, sports = false }: { data: Dis
 }
 
 /** 체육 종목 결과 위에 보여 주는 출처 안내 */
-export function SportsSourceNote({ voucherCap, fetchedAt }: { voucherCap: number | null; fetchedAt: string }) {
+export function SportsSourceNote({ voucherCap }: { voucherCap: number | null }) {
   return (
-    <div className="mb-3 rounded-xl bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+    <div className="mb-3 rounded-xl bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
       <p>
-        <b className="text-ink">국민체육진흥공단 자료</b> · {dotDate(fetchedAt.slice(0, 10))} 받음. 금액은 스포츠강좌이용권(저소득층 유·청소년 바우처) 가맹 시설이 등록한 강좌 결제금액이라
-        일반 회원가와 다를 수 있어요.
+        체육시설 금액은 스포츠강좌이용권(저소득층 유·청소년 바우처) 가맹 시설이 국민체육진흥공단에 등록한 강좌 결제금액이라 일반 회원가와 다를 수 있어요.
         {voucherCap ? ` 월 지원 한도와 같은 ${manwon(voucherCap)} 강좌가 많아, 그 금액은 시세·비교에서 빼고 보여 드려요.` : ''} 금액이 없는 곳은 시·군·구에 신고된 체육시설
         목록이에요.
       </p>

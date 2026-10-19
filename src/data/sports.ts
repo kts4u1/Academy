@@ -8,7 +8,7 @@
 
 import { stableName } from '../lib/hash';
 import { isPersonalSlot, scrubContacts } from '../lib/privacy';
-import { detectAges, detectSessionsPerWeek, isNonMonthlyCourseName } from '../lib/neisClassify';
+import { detectAges, detectSessionsPerWeek } from '../lib/neisClassify';
 import type { Course, RealAcademy } from '../lib/realData';
 import type { AgeGroup } from '../types';
 import { resolveAddressDistrict } from './regions';
@@ -74,6 +74,35 @@ export function subjectFromName(text: string): string | null {
   return null;
 }
 
+/** 이름에 나오는 앱 종목 모두 ('킥복싱'은 복싱으로 세지 않는다) */
+export function subjectsInName(text: string): string[] {
+  const t = text.replace(/킥\s*복싱/g, '킥복싱');
+  return NAME_SUBJECT_RULES.filter((r) => (r.id === 'boxing' ? /(?<!킥)복싱|권투/.test(t) : r.re.test(t))).map((r) => r.id);
+}
+
+/** 앱 종목이 아닌 활동 (종목 코드와 상관없이 강좌를 싣지 않는다) */
+const NON_APP_ACTIVITY_RE = /헬스|피트니스|휘트니스|트릭킹|폴\s*댄스|발레|파크\s*골프/;
+
+/**
+ * 강좌 종목: 종목 코드보다 강좌 이름에 적힌 종목이 하나뿐이면 그것을 쓴다
+ * ('수영'이 태권도로 등록된 경우). 태권도장 커리큘럼처럼 줄넘기가 다른 말과 함께 적힌 경우는 종목 코드대로.
+ */
+export function courseSubject(courseName: string, itemName: string): string | null {
+  // 파크골프는 골프 레슨과 다른 종목
+  if (/파크\s*골프/.test(courseName)) return null;
+  const byItem = VOUCHER_ITEM_SUBJECT[itemName] ?? null;
+  const hits = subjectsInName(courseName);
+  if (hits.length === 1 && hits[0] !== byItem) {
+    const curriculum = hits[0] === 'jumprope' && /품새|겨루기|발차기|호신|[,.·/+&]/.test(courseName);
+    if (!curriculum) return hits[0];
+  }
+  if (hits.includes('kickboxing') && (!byItem || ['boxing', 'jiujitsu', 'hapkido'].includes(byItem))) return 'kickboxing';
+  if (byItem) return NON_APP_ACTIVITY_RE.test(courseName) && hits.length === 0 ? null : byItem;
+  // '기타종목'·'종합체육시설'·'헬스' 강좌는 이름에 종목이 있을 때만
+  if (['기타종목', '종합체육시설', '헬스'].includes(itemName) && hits.length && !NON_APP_ACTIVITY_RE.test(courseName.replace(/헬스장/g, ''))) return hits[0];
+  return null;
+}
+
 /** 비대면(온라인) 종목 코드: 대면 코드와 짝으로 80~108 */
 export function isOnlineItem(itemCd: string): boolean {
   const n = Number(itemCd);
@@ -117,20 +146,64 @@ export function detectVoucherCap(courses: SportsRow[]): number | null {
 const MULTI_MONTH_RE = /(?:[2-9]|1[0-2])\s*개월|분기|학기|당겨\s*쓰기/;
 /** '10회권', '12회' 같은 회차권 ('주3회', '주 5회권', '월 4회'는 월 수강료) */
 const PASS_RE = /(?<!주\s*)\d+\s*회\s*권|(?<![주월]\s*)[1-9]\d\s*회/;
+/** '[2회]', '(1회)'처럼 괄호 속 횟수만 있는 회차권 */
+const BRACKET_PASS_RE = /[[(]\s*[1-9]\s*회\s*[\])]/;
+/** 한 달 강좌임을 밝힌 이름 ('1개월 8회권', '4주(8회)', '주2회') */
+const MONTHLY_HINT_RE = /1\s*개월|한\s*달|1\s*달|\d\s*주|주\s*\d|월\s*\d|[월화수목금토일]\s*,\s*[월화수목금토일]/;
 const ADDON_RE = /추가\s*(결제|금|요금|비)?|대여료|장비\s*대여/;
+/**
+ * 체육 강좌에서 월 수강료가 아닌 것. 교육청 규칙(특강·체험·캠프 등)을 바탕으로 하되,
+ * '차량비 미포함'·'기초수급 대상자'·'클리닉'·'하루 요가'처럼 정규 강좌 이름에 흔한 말은 빼지 않는다
+ */
+const SPORTS_EXCLUDE_RE = new RegExp(
+  [
+    '특강',
+    '일일',
+    '하루\\s*(자유)?\\s*(이용|체험)권?',
+    '체험',
+    '원\\s*데이',
+    'one\\s*-?day',
+    '교재',
+    '재료',
+    '(방학|여름|겨울|썸머|서머|윈터|단기|주말|\\d+박)\\S{0,4}캠프',
+    '캠프\\s*(참가)?비',
+    '등록비',
+    '입회비',
+    '^\\s*차량(비|운행비)?\\s*$',
+    '진단',
+    '레벨\\s*테스트',
+    '심리\\s*상담',
+    '컨설팅',
+    '보충',
+  ].join('|'),
+  'i',
+);
+/** 강습이 아니라 시설 이용권 (자유수영·헬스·스크린 타석 등) */
+const FACILITY_PASS_RE = /자유\s*(수영|이용)|헬스|사우나|찜질|스크린\s*(골프|타석)|연습장\s*이용|\d+\s*일\s*(이용)?\s*권/;
+const LESSON_WORD_RE = /강습|레슨|교실|지도|수업|선수반/;
+/** 형제·여러 명을 합친 금액 */
+const SIBLING_TOTAL_RE = /[2-4]\s*(형제|남매|자매)|삼형제|[2-4]\s*인\s*(등록|결제)/;
+/** 감면·할인 대상자 전용 금액 */
+const REDUCED_RE = /\d+\s*%|감면|다둥이/;
 /** 1:1·개인 레슨 ('1:10', '1:15' 같은 정원 표기나 '그룹PT'는 아님) */
 const PRIVATE_RE = /(?<![\d:])1\s*(:|대)\s*1(?![\d])|개인\s*(레슨|지도|강습|수업|운동|PT)|(?<!그룹\s*|단체\s*|소그룹\s*)(\bPT\b|피티)|퍼스널|프라이빗/i;
 
 export const MIN_SPORTS_PRICE = 10000;
 const YOUTH_AGES: AgeGroup[] = ['preschool', 'elementary', 'middle', 'high'];
+/** 체육 강좌에서 성인 대상을 뜻하는 말 (교육청 학원 분류는 바꾸지 않으려고 여기 둔다) */
+const SPORTS_ADULT_RE = /일반부|어르신|시니어|실버|주부|중장년|노인|여성\s*(전용|반)|엄마/;
 export const MAX_SPORTS_PRICE = 1000000;
 
 export function classifySportsCourse(name: string, price: number, cap: number | null): Pick<Course, 'excluded' | 'private' | 'voucherCap'> {
   const out: Pick<Course, 'excluded' | 'private' | 'voucherCap'> = {};
-  if (isNonMonthlyCourseName(name)) out.excluded = '특강·체험 등 월 수강료가 아닌 항목';
+  if (SPORTS_EXCLUDE_RE.test(name)) out.excluded = '특강·체험 등 월 수강료가 아닌 항목';
   else if (MULTI_MONTH_RE.test(name)) out.excluded = '여러 달 치를 묶은 금액';
-  else if (PASS_RE.test(name)) out.excluded = '회차권 (월 수강료가 아님)';
+  else if ((PASS_RE.test(name) || BRACKET_PASS_RE.test(name)) && !MONTHLY_HINT_RE.test(name)) out.excluded = '회차권 (월 수강료가 아님)';
   else if (ADDON_RE.test(name)) out.excluded = '추가 요금·대여료';
+  else if (FACILITY_PASS_RE.test(name) && !LESSON_WORD_RE.test(name)) out.excluded = '자유 이용·시설 이용권 (강습료가 아님)';
+  else if (SIBLING_TOTAL_RE.test(name)) out.excluded = '형제·여러 명을 합친 금액';
+  else if (REDUCED_RE.test(name)) out.excluded = '감면·할인 대상자 전용 금액';
+  else if (/^9{6}$|^999000$/.test(String(price))) out.excluded = '자리 표시용 금액';
   else if (price < MIN_SPORTS_PRICE) out.excluded = '금액이 너무 작음 (회당·추가 요금으로 보임)';
   else if (price > MAX_SPORTS_PRICE) out.excluded = '금액이 너무 큼';
   else if (cap && (price === cap * 2 || price === cap * 3)) out.excluded = '바우처 여러 달 치(한도의 2~3배)를 한 번에 결제한 금액으로 보임';
@@ -185,22 +258,21 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
       // 수강생 한 명을 위한 개인 결제창(가린 이름·전화 뒷자리)은 싣지 않는다
       if (!courseName || price <= 0 || isPersonalSlot(courseName)) continue;
       // 킥복싱은 법정 종목이 아니라 복싱·기타종목으로 등록되어 이름으로 가린다
-      const byItem = VOUCHER_ITEM_SUBJECT[r.item_nm];
-      const byName = subjectFromName(courseName);
-      let subjectId: string | null = byName === 'kickboxing' && (!byItem || ['boxing', 'jiujitsu', 'hapkido'].includes(byItem)) ? 'kickboxing' : (byItem ?? null);
-      if (!subjectId && ['기타종목', '종합체육시설', '헬스'].includes(r.item_nm)) subjectId = byName;
+      const subjectId = courseSubject(courseName, r.item_nm);
       if (!subjectId) continue; // 앱에 없는 종목(헬스·볼링·승마·무용 등)
       const key = `${courseName}|${price}|${subjectId}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const sessions = detectSessionsPerWeek(courseName);
-      const ages = detectAges(courseName);
+      const detected = detectAges(courseName);
+      const ages = detected.length ? detected : SPORTS_ADULT_RE.test(courseName) ? (['adult'] as AgeGroup[]) : null;
       courses.push({
         name: courseName,
         price,
         subjectId,
-        // 스포츠강좌이용권은 유·청소년(만 5~18세) 대상이라 대상이 적혀 있지 않으면 유아~고등으로 본다
-        ages: ages.length ? ages : YOUTH_AGES,
+        // 스포츠강좌이용권은 유·청소년(만 5~18세) 대상이라 대상이 적혀 있지 않으면 유아~고등으로 짐작한다 (거르기에만 씀)
+        ages: ages ?? YOUTH_AGES,
+        ...(ages ? {} : { agesInferred: true }),
         ...(sessions ? { sessionsPerWeek: sessions } : {}),
         ...classifySportsCourse(courseName, price, cap),
       });
@@ -233,39 +305,39 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
 const DOJANG_TYPE: Record<string, string> = { 태권도: 'taekwondo', 권투: 'boxing', 검도: 'kendo', 합기도: 'hapkido', 유도: 'judo' };
 const LESSON_TYPE: Record<string, string> = { 축구: 'soccer', 줄넘기: 'jumprope', 농구: 'basketball', 야구: 'baseball', 배드민턴: 'badminton', 수영: 'swim' };
 
-/** 전국체육시설 정보의 업종·시설유형 → 앱 과목 (금액이 없는 시설 목록) */
-function facilitySubject(r: SportsRow): string | null {
+/** '수영구'·'수영로'처럼 종목 이름과 같은 지명 */
+const PLACE_NAME_RE = /수영(구|동|로|점|역|민락|본점)|좌수영|광안/g;
+const uniq = (xs: (string | null | undefined)[]) => Array.from(new Set(xs.filter((x): x is string => Boolean(x))));
+
+/** 전국체육시설 정보의 업종·시설유형 → 앱 과목들 (금액이 없는 시설 목록) */
+export function facilitySubjects(r: SportsRow): string[] {
   const fcob = r.fcob_nm ?? '';
   const ftype = r.ftype_nm ?? '';
   const name = r.faci_nm ?? '';
-  const byName = subjectFromName(name);
+  const byName = subjectFromName(name.replace(PLACE_NAME_RE, ''));
   switch (fcob) {
-    case '체육도장업': {
-      // 주짓수·킥복싱·MMA 는 권투·레슬링·합기도·유도 등으로 신고되어 상호로 가린다
-      if (byName === 'kickboxing' || byName === 'jiujitsu' || byName === 'jumprope') return byName;
-      const t = DOJANG_TYPE[ftype];
-      return t ?? byName;
-    }
-    case '체육교습업': {
-      const t = LESSON_TYPE[ftype];
-      return t ?? byName;
-    }
+    case '체육도장업':
+      // 신고한 종목 + 이름의 종목 (주짓수·킥복싱·MMA 는 권투·레슬링·합기도 등으로 신고된다)
+      return uniq([DOJANG_TYPE[ftype], byName]);
+    case '체육교습업':
+      return uniq([LESSON_TYPE[ftype] ?? byName]);
     case '수영장업':
     case '수영장':
-      return 'swim';
+      // 야외(물놀이) 수영장은 강습 시설로 보기 어렵다
+      return ftype === '실외' ? [] : ['swim'];
     case '인공암벽장업':
-      return 'climbing';
+      return ['climbing'];
     case '골프연습장업':
       // 스크린골프는 레슨 시설로 보기 어려워 넣지 않는다
-      return ftype === '스크린' ? null : 'golf';
+      return ftype === '스크린' || /스크린|GDR|골프존/i.test(name) ? [] : ['golf'];
     case '테니스장':
-      return 'tennis';
+      return ['tennis'];
     case '체력단련장업':
     case '종합체육시설업':
-      // 필라테스·복싱·킥복싱처럼 이름에 종목이 있는 곳만
-      return byName && ['pilates', 'boxing', 'kickboxing', 'jiujitsu', 'climbing', 'swim'].includes(byName) ? byName : null;
+      // 이름에 종목이 있는 곳만
+      return byName && ['pilates', 'boxing', 'kickboxing', 'jiujitsu', 'climbing', 'swim', 'taekwondo', 'hapkido', 'kendo'].includes(byName) ? [byName] : [];
     default:
-      return null;
+      return [];
   }
 }
 
@@ -277,8 +349,8 @@ export function facilityAcademies(snap: SportsSnapshot): RealAcademy[] {
     if (r.faci_stat_nm !== '정상운영') continue;
     // 공공시설은 강습이 있는 수영장·테니스장만 (간이운동장·축구장 등은 대관 위주)
     if (r.faci_gb_nm === '공공' && !['수영장', '테니스장', '인공암벽장업'].includes(r.fcob_nm)) continue;
-    const subject = facilitySubject(r);
-    if (!subject) continue;
+    const subjects = facilitySubjects(r);
+    if (subjects.length === 0) continue;
     const name = decodeEntities(r.faci_nm ?? '');
     const road = decodeEntities(r.faci_road_addr ?? '');
     const jibun = decodeEntities(r.faci_addr ?? '');
@@ -305,19 +377,21 @@ export function facilityAcademies(snap: SportsSnapshot): RealAcademy[] {
       established: '',
       loadedAt: /^\d{4}-\d{2}-\d{2}/.test(r.updt_dt ?? '') ? r.updt_dt.slice(0, 10) : fallbackDate,
       courses: [],
-      subjects: [subject],
+      subjects,
     });
   }
   return out;
 }
 
-const normName = (s: string) => s.replace(/\(.*?\)|[\s·.,\-_'"&/]/g, '').toLowerCase();
+/** 띄어쓰기·문장부호만 지운 이름 (괄호 속 지점 이름은 남겨 '와이피스포츠(응봉)'과 다른 지점을 구분한다) */
+const normName = (s: string) => s.replace(/[\s·.,\-_'"&/()[\]]/g, '').toLowerCase();
 /** 도로명 + 건물번호: '서울특별시 강남구 도곡로 123 (역삼동)' → '도곡로123' */
 const roadKey = (address: string) => address.match(/([가-힣0-9]+(?:로|길))\s*(\d+(?:-\d+)?)/)?.slice(1, 3).join('') ?? '';
 
 /**
  * 같은 시설이 두 자료에 다 있으면(바우처 가맹 태권도장이 신고 체육시설 목록에도 있는 경우) 금액이 있는 바우처 쪽만 남기고,
  * 바우처 쪽에 없는 전화번호는 시설 목록에서 가져온다.
+ * 종합운동장처럼 한 주소에 여러 시설이 있는 곳이 많아, 같은 건물이라도 종목이 같고 이름이 닮았을 때만 같은 곳으로 본다.
  */
 export function mergeSportsAcademies(voucher: RealAcademy[], listed: RealAcademy[]): RealAcademy[] {
   const byName = new Map<string, RealAcademy>();
@@ -333,17 +407,18 @@ export function mergeSportsAcademies(voucher: RealAcademy[], listed: RealAcademy
     let match = byName.get(`${f.sido}|${f.sigungu}|${n}`);
     if (!match) {
       const rk = roadKey(f.address);
-      // 같은 건물이면 이름 앞 두 글자가 같거나 한쪽 이름이 다른 쪽을 품을 때 같은 곳으로 본다
+      // 같은 건물 + 같은 종목 + (한쪽 이름이 다른 쪽을 품거나 앞 두 글자가 같음)
       match = rk
         ? byRoad.get(`${f.sido}|${f.sigungu}|${rk}`)?.find((v) => {
             const m = normName(v.name);
-            return m.includes(n) || n.includes(m) || (m.length >= 2 && m.slice(0, 2) === n.slice(0, 2));
+            const contains = Math.min(m.length, n.length) >= 3 && (m.includes(n) || n.includes(m));
+            const prefix = m.length >= 2 && m.slice(0, 2) === n.slice(0, 2);
+            return (contains || prefix) && f.subjects.every((s) => v.subjects.includes(s));
           })
         : undefined;
     }
     if (match) {
       if (!match.phone && f.phone) match.phone = f.phone;
-      for (const s of f.subjects) if (!match.subjects.includes(s)) match.subjects.push(s);
       continue;
     }
     rest.push(f);
@@ -362,10 +437,37 @@ export interface SportsSummary {
   listed: number;
 }
 
+/**
+ * 같은 시설에 같은 종목 강좌 금액의 두 배(또는 두 강좌의 합)인 강좌가 있고 그 금액이 종목 전국 중앙값의 1.8배를 넘으면
+ * 여러 달 치를 한 번에 결제한 금액으로 보고 비교에서 뺀다 (예: 16만·19만원 강좌가 있는 곳의 32만·35만원).
+ */
+export function markMultiMonthSums(academies: RealAcademy[]): void {
+  const bySubject = new Map<string, number[]>();
+  for (const a of academies)
+    for (const c of a.courses) if (c.subjectId && !c.excluded && !c.private && !c.voucherCap) (bySubject.get(c.subjectId) ?? bySubject.set(c.subjectId, []).get(c.subjectId)!).push(c.price);
+  const median = new Map<string, number>();
+  for (const [s, ps] of bySubject) {
+    ps.sort((x, y) => x - y);
+    median.set(s, ps[Math.floor((ps.length - 1) / 2)]);
+  }
+  for (const a of academies) {
+    for (const c of a.courses) {
+      if (c.excluded || c.private || !c.subjectId || /선수|입시|전문|엘리트/.test(c.name)) continue;
+      const m = median.get(c.subjectId);
+      if (!m || c.price < m * 1.8) continue;
+      const others = a.courses.filter((o) => o !== c && o.subjectId === c.subjectId).map((o) => o.price);
+      const double = others.some((p) => p * 2 === c.price);
+      const sum = others.some((p, i) => others.some((q, j) => i !== j && p + q === c.price));
+      if (double || sum) c.excluded = '같은 시설 강좌 금액의 두 배·합이라 여러 달 치로 보임';
+    }
+  }
+}
+
 /** 원자료 → 앱 형식 체육시설 전체와 요약 */
 export function buildSports(snap: SportsSnapshot): { academies: RealAcademy[]; summary: SportsSummary } {
   const cap = detectVoucherCap(snap.courses);
   const voucher = voucherAcademies(snap, cap);
+  markMultiMonthSums(voucher);
   const academies = mergeSportsAcademies(voucher, facilityAcademies(snap));
   return {
     academies,

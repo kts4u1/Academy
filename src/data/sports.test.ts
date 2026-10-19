@@ -156,14 +156,14 @@ describe('전국체육시설 목록', () => {
       ],
     });
     const list = facilityAcademies(s);
-    expect(list.map((a) => [a.name, a.subjects[0], a.kind])).toEqual([
-      [expect.stringMatching(/^목록태권도/), 'taekwondo', '체육시설'],
-      ['강남 킥복싱', 'kickboxing', '체육시설'],
-      ['그레이시 주짓수', 'jiujitsu', '체육시설'],
-      ['실내골프', 'golf', '체육시설'],
-      ['구민 수영장', 'swim', '공공체육시설'],
-      ['바른 필라테스', 'pilates', '체육시설'],
-      ['OO농구교실', 'basketball', '체육시설'],
+    expect(list.map((a) => [a.name, a.subjects, a.kind])).toEqual([
+      [expect.stringMatching(/^목록태권도/), ['taekwondo'], '체육시설'],
+      ['강남 킥복싱', ['boxing', 'kickboxing'], '체육시설'], // 권투로 신고 + 이름은 킥복싱
+      ['그레이시 주짓수', ['jiujitsu'], '체육시설'],
+      ['실내골프', ['golf'], '체육시설'],
+      ['구민 수영장', ['swim'], '공공체육시설'],
+      ['바른 필라테스', ['pilates'], '체육시설'],
+      ['OO농구교실', ['basketball'], '체육시설'],
     ]);
     expect(list[0]).toMatchObject({ source: 'facility', courses: [], sido: '서울', sigungu: '강남구', dong: '대치동', phone: '02-555-0000', loadedAt: '2026-10-01' });
   });

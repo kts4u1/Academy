@@ -15,6 +15,8 @@ import type { AgeGroup } from '../types';
 
 function itemMarket(rows: MarketRow[], item: CalcItem) {
   if (item.noMarket || !item.subjectId || !SUBJECT_MAP[item.subjectId] || !item.sido) return null;
+  // 바우처 한도 금액을 그대로 넣었으면 실제 금액으로 바꿀 때까지 비교하지 않는다
+  if (item.voucherCap && item.monthly === item.reportedPrice) return null;
   return marketForCourse(rows, { sido: item.sido, sigungu: item.sigungu }, { subjectId: item.subjectId, ages: item.age ? [item.age] : [] });
 }
 
@@ -123,7 +125,7 @@ export function BudgetPage() {
 
   return (
     <div>
-      <PageHeader title="내 학원비" subtitle="다니는 학원비를 모아 보고 우리 동네 신고 교습비 시세와 비교해요" />
+      <PageHeader title="내 학원비" subtitle="다니는 학원비를 모아 보고 우리 동네 시세와 비교해요" />
 
       {calc.length === 0 ? (
         <EmptyState title="아직 추가한 학원비가 없어요" desc="학원 상세 화면의 ‘내 학원비에 추가’를 누르거나, 아래에서 직접 입력하세요. 과외처럼 자료에 없는 곳도 넣을 수 있어요." />
@@ -216,11 +218,14 @@ export function BudgetPage() {
                           <p className="text-right text-[12px] text-ink-3">
                             {match && diff !== null ? (
                               <>
-                                {marketScopeName(match.row, market.mode ?? 'static')} {match.row.age ? AGE_LABELS[match.row.age] : ''} 중앙값 {manwon(match.row.median)} 대비{' '}
+                                {marketScopeName(match.row, market.mode ?? 'static')} {match.row.age ? AGE_LABELS[match.row.age] : ''}{' '}
+                                {SUBJECT_MAP[item.subjectId ?? '']?.inNeis === false ? '바우처 등록 금액' : '신고 교습비'} 중앙값 {manwon(match.row.median)} 대비{' '}
                                 <b className={diff > 0.005 ? 'text-pricey' : diff < -0.005 ? 'text-cheap' : 'text-ink'}>{signedPercent(diff)}</b>
                               </>
                             ) : market.loading ? (
                               '시세를 불러오는 중…'
+                            ) : item.voucherCap && item.monthly === item.reportedPrice ? (
+                              '바우처 월 지원 한도와 같은 금액이라 비교하지 않아요. 실제 내는 금액으로 바꾸면 비교해 드려요'
                             ) : item.noMarket ? (
                               '특강·1:1 같은 과정이라 월 시세와 비교하지 않아요'
                             ) : item.subjectId ? (

@@ -164,7 +164,7 @@ function DataStatusBanner() {
       <p className="mx-auto max-w-app px-4 py-1.5 text-[12px] text-ink-2">
         {mode === 'static' && manifest && (
           <>
-            <b className="font-semibold text-ink">교육청 학원교습소정보</b> ·{' '}
+            <b className="font-semibold text-ink">{manifest.sports ? '교육청·국민체육진흥공단 공공데이터' : '교육청 학원교습소정보'}</b> ·{' '}
             {manifest.sourceKind === 'file' && manifest.baseDate ? `전국 파일 ${dotDate(manifest.baseDate)} 기준` : `${kstDate(manifest.updatedAt)} 업데이트 (매주 자동)`}
             {manifest.sampleMode && <b className="ml-1 font-semibold text-pricey">· 표본(일부 학원만)</b>}
             {age >= STALE_DAYS && <b className="ml-1 font-semibold text-pricey">· {age}일 동안 갱신되지 않았어요</b>} · {link('/data', '데이터 안내')}
@@ -185,7 +185,7 @@ function DataStatusBanner() {
         )}
         {mode === 'none' && (
           <>
-            <b className="font-semibold text-ink">아직 교육청 데이터가 없어요</b> · {link('/settings#neis-key', '인증키 넣기')} · {link('/data', '자동 업데이트 설정 방법')}
+            <b className="font-semibold text-ink">아직 교육청 데이터가 없어요</b> · {link('/settings#neis-key', '인증키 넣기')} · {link('/data', '데이터 안내')}
           </>
         )}
       </p>

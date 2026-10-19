@@ -103,14 +103,15 @@ export function HomePage() {
         <InstallBanner />
       </div>
       <section className="pb-2 pt-4 md:pt-8">
-        <p className="eyebrow">교육청 신고 교습비 · 전국 256개 시·군·구</p>
+        <p className="eyebrow">공공데이터 · 전국 256개 시·군·구</p>
         <h1 className={`mt-2 font-bold leading-[1.2] tracking-tight md:text-[36px] ${home ? 'text-[23px]' : 'text-[28px]'}`}>
           우리 동네 학원비,
-          <br className="hidden sm:block" /> 교육청 신고가로 비교하세요
+          <br className="hidden sm:block" /> 공식 자료로 비교하세요
         </h1>
         {/* 내 동네를 정한 뒤에는 휴대폰에서 설명을 줄여 우리 동네 시세가 첫 화면에 보이게 */}
         <p className={`mt-3 max-w-xl text-[15px] text-ink-2 ${home ? 'hidden md:block' : ''}`}>
-          학원·교습소가 교육청에 신고한 교습비를 매주 받아서 같은 과목·같은 연령끼리 비교해 드려요. 예시 데이터 없이 실제 자료만 보여 줍니다.
+          교육청에 신고된 학원·교습소 교습비와 국민체육진흥공단의 체육시설 강좌 금액을 매주 받아서 같은 과목·같은 연령끼리 비교해 드려요. 예시 데이터 없이 실제 자료만
+          보여 줍니다.
         </p>
         <form
           className="mt-5 flex max-w-xl gap-2"

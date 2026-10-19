@@ -61,7 +61,7 @@ describe('App', () => {
     window.localStorage.setItem('hakwon-compare:settings', JSON.stringify({ home: { sido: '서울', sigungu: '강남구' } }));
     window.location.hash = '#/';
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('교육청 신고가');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공식 자료로 비교하세요');
     expect(await screen.findByText(/교육청에 등록된 학원·교습소/)).toHaveTextContent('4곳');
     expect(await screen.findByText('2026.10.13 업데이트 (매주 자동)', { exact: false })).toBeInTheDocument();
   });

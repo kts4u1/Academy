@@ -103,7 +103,7 @@ export function SettingsPage() {
             }}
             placeholder="발급받은 키를 붙여넣으세요"
           />
-          <p className="text-[12px] text-ink-3">키는 이 브라우저에만 저장되고 교육청 서버로만 보내요. 사이트 전체에 쓰려면 GitHub 저장소 Secrets 의 NEIS_KEY 로 등록하세요.</p>
+          <p className="text-[12px] text-ink-3">키는 이 브라우저에만 저장되고 교육청 서버로만 보내요.</p>
           {check.state === 'ok' && <p className="text-[13px] font-semibold text-cheap">사용할 수 있는 키예요 (서울 교육청 학원·교습소 {check.total.toLocaleString()}곳 확인).</p>}
           {check.state === 'error' && (
             <p role="alert" className="text-[13px] font-semibold text-pricey">

@@ -128,7 +128,7 @@ export function InstallSection() {
   if (SINGLE)
     return (
       <p className="card p-4 text-sm text-ink-2">
-        이 미리 보기에서는 설치할 수 없어요. 배포된 사이트(GitHub Pages)를 휴대폰 브라우저로 열면 홈 화면에 추가할 수 있어요.
+        이 미리 보기에서는 설치할 수 없어요. 배포된 사이트를 휴대폰 브라우저로 열면 홈 화면에 추가할 수 있어요.
       </p>
     );
   if (standalone) return <p className="card p-4 text-sm text-ink-2">지금 홈 화면 앱으로 쓰고 있어요.</p>;

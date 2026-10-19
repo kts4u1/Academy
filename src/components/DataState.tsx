@@ -21,16 +21,9 @@ export function NoDataState({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
       {!compact && (
-        <ol className="mt-4 flex list-decimal flex-col gap-2 pl-5 text-sm text-ink-2">
-          <li>
-            <b className="text-ink">사이트로 운영할 때</b> · GitHub 저장소 Settings → Pages 의 Source 를 GitHub Actions 로 바꾸고 Actions 탭에서 ‘교육청 데이터 주간 업데이트’를
-            실행하세요. 인증키가 없어도 교육청이 매달 올리는 전국 파일로 만들고, Secrets 에 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code> 를 등록하면 매주 최신
-            자료로 바뀝니다.
-          </li>
-          <li>
-            <b className="text-ink">이 브라우저에서 바로 보기</b> · 설정에 인증키를 넣으면 고른 시·군·구만 교육청에서 직접 받아 7일 동안 보관합니다.
-          </li>
-        </ol>
+        <p className="mt-4 text-sm text-ink-2">
+          <b className="text-ink">이 브라우저에서 바로 보기</b> · 설정에 인증키를 넣으면 고른 시·군·구만 교육청에서 직접 받아 7일 동안 보관합니다.
+        </p>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
         <Link to="/settings#neis-key" className="btn-primary">

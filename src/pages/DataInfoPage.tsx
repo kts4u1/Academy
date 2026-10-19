@@ -88,16 +88,12 @@ export function DataInfoPage() {
         </ul>
       </Section>
 
-      <Section title="매주 자동 업데이트" desc="GitHub Actions 가 매주 월요일 새벽 3시(한국 시간)에 실행해요">
-        <ol className="card flex list-decimal flex-col gap-2 py-4 pl-9 pr-4 text-[13px] text-ink-2">
-          <li>저장소 Settings → Pages 에서 Source 를 ‘GitHub Actions’로 바꿔요.</li>
-          <li>
-            (권장) Settings → Secrets and variables → Actions → New repository secret 에서 이름 <code className="rounded bg-surface-2 px-1">NEIS_KEY</code>, 값에 발급받은
-            인증키를 넣어요. 없으면 교육청 전국 파일(매달 갱신)로 만들어요.
-          </li>
-          <li>Actions 탭 → ‘교육청 데이터 주간 업데이트’ → Run workflow 로 처음 한 번 실행해요. 이후로는 매주 자동이에요.</li>
-          <li>받다가 실패하면 지난주 데이터를 그대로 두고, 다음 실행에서 다시 받아요. 9일 넘게 갱신되지 않으면 화면 위쪽에 알려 드려요.</li>
-        </ol>
+      <Section title="매주 자동 업데이트" desc="매주 월요일 새벽 3시(한국 시간)">
+        <ul className="card flex list-disc flex-col gap-2 py-4 pl-9 pr-4 text-[13px] text-ink-2">
+          <li>교육청 학원교습소정보와 국민체육진흥공단 체육시설 자료를 매주 새로 받아 사이트를 다시 만들어요.</li>
+          <li>받다가 실패하면 지난주 자료를 그대로 두고, 다음 주에 다시 받아요.</li>
+          <li>9일 넘게 갱신되지 않으면 화면 위쪽에 알려 드려요.</li>
+        </ul>
       </Section>
 
       <Section title="비교 규칙">

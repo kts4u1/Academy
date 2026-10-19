@@ -113,32 +113,6 @@ export function HomePage() {
           교육청에 신고된 학원·교습소 교습비와 국민체육진흥공단의 체육시설 강좌 금액을 매주 받아서 같은 과목·같은 연령끼리 비교해 드려요. 예시 데이터 없이 실제 자료만
           보여 줍니다.
         </p>
-        <form
-          className="mt-5 flex max-w-xl gap-2"
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            go(q);
-          }}
-        >
-          <label htmlFor="home-search" className="sr-only">
-            학원 검색
-          </label>
-          <div className="relative flex-1">
-            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-3" />
-            <input id="home-search" type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} className="field h-12 pl-10" placeholder="동네 + 과목 (예: 목동 영어)" />
-          </div>
-          <button type="submit" className="btn-primary h-12 px-5">
-            검색
-          </button>
-        </form>
-        <div className="scroll-x mt-3">
-          {EXAMPLES.map((p) => (
-            <button key={p} type="button" className="chip" onClick={() => go(p)}>
-              {p}
-            </button>
-          ))}
-        </div>
       </section>
 
       <Section
@@ -163,6 +137,36 @@ export function HomePage() {
             </button>
           </div>
         )}
+      </Section>
+
+      {/* 동네를 먼저 정하고, 그다음 직접 검색 */}
+      <Section title="직접 검색" desc="동네와 과목을 함께 적어 보세요">
+        <form
+          className="flex max-w-xl gap-2"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            go(q);
+          }}
+        >
+          <label htmlFor="home-search" className="sr-only">
+            학원 검색
+          </label>
+          <div className="relative flex-1">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-3" />
+            <input id="home-search" type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} className="field h-12 pl-10" placeholder="동네 + 과목 (예: 목동 영어)" />
+          </div>
+          <button type="submit" className="btn-primary h-12 px-5">
+            검색
+          </button>
+        </form>
+        <div className="scroll-x mt-3">
+          {EXAMPLES.map((p) => (
+            <button key={p} type="button" className="chip" onClick={() => go(p)}>
+              {p}
+            </button>
+          ))}
+        </div>
       </Section>
 
       {/* 교육청 자료인 교과·예술을 먼저, 국민체육진흥공단 자료인 체육은 뒤에 */}

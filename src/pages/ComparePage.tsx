@@ -12,14 +12,27 @@ import { dotDate, manwon, unitPrice } from '../lib/format';
 import { courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type RealAcademy } from '../lib/realData';
 import { marketForCourse, marketScopeName, type MarketMatch } from '../lib/realSearch';
 import { MAX_COMPARE, useApp, type CompareItem } from '../store/AppContext';
-import { noPriceText, sourceShort } from '../lib/sourceText';
+import { loadedOf, noPriceText, priceName, sourceShort } from '../lib/sourceText';
 
 interface Column {
+  /** 자료 갱신일 (바우처 시설은 받은 날짜) */
+  loaded: string;
   item: CompareItem;
   academy: RealAcademy | null;
   course: Course | null;
   match: MarketMatch | null;
   position: ReturnType<typeof positionOf> | null;
+}
+
+/** 최저 표시: 바우처 한도에 맞춘 금액은 비교에서 빼므로 '최저'를 주지 않는다 */
+function isCheapest(c: Column, minPrice: number | null): boolean {
+  return minPrice !== null && !!c.course && !c.course.voucherCap && c.course.price === minPrice;
+}
+
+/** 비교 시세가 없을 때의 설명 */
+function noMarketText(course: Course | null): string {
+  if (course?.voucherCap) return '바우처 한도 금액 · 시세 제외';
+  return course && !isComparableCourse(course) ? '비교 제외 과정' : '시세 없음';
 }
 
 function Cell({ children, best }: { children: ReactNode; best?: boolean }) {
@@ -28,7 +41,7 @@ function Cell({ children, best }: { children: ReactNode; best?: boolean }) {
 
 function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode: DataMode; minPrice: number | null; onRemove: () => void; onCourse: (course: string | null) => void }) {
   const per = c.course ? pricePerSession(c.course) : null;
-  const cheapest = minPrice !== null && c.course?.price === minPrice;
+  const cheapest = isCheapest(c, minPrice);
   return (
     <article className={`card p-4 ${cheapest ? 'ring-1 ring-cheap' : ''}`}>
       <div className="flex items-start gap-2">
@@ -54,7 +67,8 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
             {!c.course && <option value="">과정 선택</option>}
             {c.academy.courses.map((course) => (
               <option key={courseKey(course)} value={courseKey(course)}>
-                {course.name} · {manwon(course.price)}
+                {course.name}
+                {course.subjectId && SUBJECT_MAP[course.subjectId]?.group === 'sports' ? ` (${SUBJECT_MAP[course.subjectId].name})` : ''} · {manwon(course.price)}
               </option>
             ))}
           </select>
@@ -68,7 +82,10 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
           <p className="num text-[24px] font-bold leading-none">
             {manwon(c.course.price)}
             {cheapest && <span className="price-tag ml-1.5 align-middle">최저</span>}
-            <span className="mt-1 block text-[12px] font-medium text-ink-3">월 신고 교습비{per ? ` · 회당 약 ${unitPrice(per)} (주 ${c.course.sessionsPerWeek}회)` : ''}</span>
+            <span className="mt-1 block text-[12px] font-medium text-ink-3">
+              월 {priceName(c.academy?.source)}
+              {per ? ` · 회당 약 ${unitPrice(per)} (주 ${c.course.sessionsPerWeek}회)` : ''}
+            </span>
           </p>
           {c.position && c.match ? (
             <span className="flex flex-col items-start gap-1">
@@ -78,7 +95,7 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
               </span>
             </span>
           ) : (
-            <span className="text-[12px] text-ink-3">{!isComparableCourse(c.course) ? '비교 제외 과정' : '시세 없음'}</span>
+            <span className="text-[12px] text-ink-3">{noMarketText(c.course)}</span>
           )}
         </div>
       )}
@@ -98,7 +115,7 @@ function MobileCard({ c, mode, minPrice, onRemove, onCourse }: { c: Column; mode
           </div>
           <div>
             <dt className="text-ink-3">자료 갱신</dt>
-            <dd className="num mt-0.5 font-medium">{c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}</dd>
+            <dd className="num mt-0.5 font-medium">{c.loaded ? dotDate(c.loaded) : '-'}</dd>
           </div>
         </dl>
       )}
@@ -157,7 +174,7 @@ export function ComparePage() {
     const course = (academy && findCourse(academy.courses, item.course)) ?? null;
     // 바우처 한도에 맞춘 금액은 시세 위치를 매기지 않는다
     const match = academy && course && isComparableCourse(course) && !course.voucherCap ? marketForCourse(market.rows, academy, course) : null;
-    return { item, academy, course, match, position: course && match ? positionOf(course.price, match.row) : null };
+    return { item, academy, course, match, position: course && match ? positionOf(course.price, match.row) : null, loaded: academy ? loadedOf(academy, data) : '' };
   });
 
   const priced = columns.filter((c) => c.course);
@@ -165,6 +182,9 @@ export function ComparePage() {
   const subjects = new Set(priced.map((c) => c.course!.subjectId ?? '?'));
   const ageSets = new Set(priced.map((c) => c.course!.ages.join(',')));
   const anySports = columns.some((c) => c.academy?.source);
+  const allSports = priced.length > 0 && priced.every((c) => c.academy?.source);
+  // 교육청 교습비와 바우처 등록 금액이 섞이면 둘 다 아우르는 말로
+  const priceHeading = allSports ? '월 바우처 등록 금액' : anySports ? '월 금액' : '월 신고 교습비';
 
   return (
     <div>
@@ -189,12 +209,12 @@ export function ComparePage() {
       <div className="flex flex-col gap-3 md:hidden">
         {priced.length > 1 && (
           <div className="card p-4">
-            <p className="mb-2 text-[13px] font-semibold text-ink-2">월 신고 교습비 낮은 순</p>
+            <p className="mb-2 text-[13px] font-semibold text-ink-2">{priceHeading} 낮은 순</p>
             <HBarList
               format={manwon}
               items={[...priced]
                 .sort((a, b) => a.course!.price - b.course!.price)
-                .map((c) => ({ key: c.item.ref.id, label: c.item.ref.name, value: c.course!.price, highlight: c.course!.price === minPrice }))}
+                .map((c) => ({ key: c.item.ref.id, label: c.item.ref.name, value: c.course!.price, highlight: isCheapest(c, minPrice) }))}
             />
           </div>
         )}
@@ -230,12 +250,13 @@ export function ComparePage() {
                       {!c.course && <option value="">과정 선택</option>}
                       {c.academy.courses.map((course) => (
                         <option key={courseKey(course)} value={courseKey(course)}>
-                          {course.name} · {manwon(course.price)}
+                          {course.name}
+                          {course.subjectId && SUBJECT_MAP[course.subjectId]?.group === 'sports' ? ` (${SUBJECT_MAP[course.subjectId].name})` : ''} · {manwon(course.price)}
                         </option>
                       ))}
                     </select>
                   ) : (
-                    <p className="mt-2 text-[12px] font-normal text-ink-3">{c.academy ? '교습비 미공개' : '이번 자료에서 찾지 못함'}</p>
+                    <p className="mt-2 text-[12px] font-normal text-ink-3">{c.academy ? noPriceText(c.academy) : '이번 자료에서 찾지 못함'}</p>
                   )}
                 </th>
               ))}
@@ -244,14 +265,14 @@ export function ComparePage() {
           <tbody className="divide-y divide-line">
             <tr>
               <th scope="row" className="px-3 py-2.5 text-[12px] font-semibold text-ink-3">
-                월 신고 교습비
+                {priceHeading}
               </th>
               {columns.map((c) => (
-                <Cell key={c.item.ref.id} best={minPrice !== null && c.course?.price === minPrice}>
+                <Cell key={c.item.ref.id} best={isCheapest(c, minPrice)}>
                   {c.course ? (
                     <>
                       <span className="text-[16px] font-bold">{manwon(c.course.price)}</span>
-                      {minPrice !== null && c.course.price === minPrice && <span className="price-tag ml-1 align-middle">최저</span>}
+                      {isCheapest(c, minPrice) && <span className="price-tag ml-1 align-middle">최저</span>}
                     </>
                   ) : (
                     '-'
@@ -282,7 +303,7 @@ export function ComparePage() {
                       </span>
                     </span>
                   ) : (
-                    <span className="text-ink-3">{c.course && !isComparableCourse(c.course) ? '비교 제외 과정' : '시세 없음'}</span>
+                    <span className="text-ink-3">{noMarketText(c.course)}</span>
                   )}
                 </Cell>
               ))}
@@ -332,7 +353,7 @@ export function ComparePage() {
                     <>
                       {c.academy.established ? dotDate(c.academy.established) : '-'}
                       <span className="block text-[11px] text-ink-3">
-                        {sourceShort(c.academy.source)} 갱신 {c.academy.loadedAt ? dotDate(c.academy.loadedAt) : '-'}
+                        {sourceShort(c.academy.source)} 갱신 {c.loaded ? dotDate(c.loaded) : '-'}
                       </span>
                     </>
                   ) : (
@@ -346,7 +367,7 @@ export function ComparePage() {
       </div>
 
       {priced.length > 1 && (
-        <Section title="월 신고 교습비" desc="낮은 순" className="hidden md:block">
+        <Section title={priceHeading} desc="낮은 순" className="hidden md:block">
           <div className="card p-4">
             <HBarList
               format={manwon}
@@ -357,7 +378,7 @@ export function ComparePage() {
                   label: c.item.ref.name,
                   value: c.course!.price,
                   sub: SUBJECT_MAP[c.course!.subjectId ?? '']?.name,
-                  highlight: c.course!.price === minPrice,
+                  highlight: isCheapest(c, minPrice),
                 }))}
             />
           </div>

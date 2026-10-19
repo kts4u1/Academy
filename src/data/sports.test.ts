@@ -228,3 +228,37 @@ describe('주소로 시·군·구 정하기', () => {
     expect(resolveAddressDistrict('알 수 없는 주소')).toBeNull();
   });
 });
+
+describe('검토에서 나온 문제 고침', () => {
+  it('정원 표기·그룹PT 는 1:1 로 보지 않는다', () => {
+    expect(classifySportsCourse('필라테스 1:4그룹수업', 105000, 105000).private).toBeUndefined();
+    expect(classifySportsCourse('수영 1:10 소그룹', 150000, 105000).private).toBeUndefined();
+    expect(classifySportsCourse('그룹PT', 150000, 105000).private).toBeUndefined();
+    expect(classifySportsCourse('1:1 PT', 150000, 105000).private).toBe(true);
+    expect(classifySportsCourse('헬스 PT 10회', 770000, 105000).private).toBe(true);
+  });
+
+  it('숫자만 적힌 이름은 넣지 않는다', () => {
+    const f = facility({ facil_nm: '1234567890' });
+    expect(voucherAcademies(snap({ facilities: [f], courses: [course(f)] }), null)).toEqual([]);
+  });
+
+  it('같은 이름·주소로 두 번 등록된 바우처 시설은 강좌를 합치고, 요약은 합친 뒤로 센다', () => {
+    const neis: RawSnapshot = { kind: 'sample', fetchedAt: '2026-10-12T18:00:00.000Z', offices: [] };
+    const f1 = facility({ facil_nm: '같은태권도' });
+    const f2 = facility({ facil_nm: '같은태권도' });
+    const sports = snap({ facilities: [f1, f2], courses: [course(f1), course(f2, { course_nm: '태권도 주3회', settl_amt: '130000' })] });
+    const { manifest, files } = buildOutput(neis, sports);
+    const list = files.get('d/11680.json') as { name: string; courses: unknown[] }[];
+    expect(list).toHaveLength(1);
+    expect(list[0].courses).toHaveLength(2);
+    expect(manifest.sports).toMatchObject({ priced: 1, courses: 2 });
+  });
+
+  it('바우처 시설의 자료 갱신일은 비워 두고(매주 파일이 바뀌지 않게) 받은 날짜는 manifest 에', () => {
+    const f = facility();
+    const [a] = voucherAcademies(snap({ facilities: [f], courses: [course(f)] }), null);
+    expect(a.loadedAt).toBe('');
+  });
+});
+

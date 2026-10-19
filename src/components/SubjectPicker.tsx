@@ -1,6 +1,7 @@
 import { ChevronDown, LayoutGrid } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { GROUPS, SUBJECT_MAP, subjectsOf } from '../data/categories';
+import { useManifest } from '../hooks';
 import type { CategoryGroup } from '../types';
 import { SubjectIcon } from './SubjectIcon';
 import { Sheet, SubjectTile } from './ui';
@@ -24,6 +25,7 @@ function Chip({ id, pressed, onClick }: { id: string | null; pressed: boolean; o
  */
 export function SubjectPicker({ value, onChange }: { value: string; onChange: (subject: string | null) => void }) {
   const [open, setOpen] = useState(false);
+  const { manifest } = useManifest();
   const groups = GROUPS.filter((g) => g.id !== 'sports');
   const rowRef = useRef<HTMLDivElement>(null);
   // 양쪽 끝에 더 있으면 흐리게 표시한다
@@ -104,7 +106,9 @@ export function SubjectPicker({ value, onChange }: { value: string; onChange: (s
           <section key={g.id} className="mb-5">
             <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold text-ink-2">
               {g.name}
-              {g.id === 'sports' && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-3">바우처 등록 금액</span>}
+              {g.id === 'sports' && (
+                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink-3">{manifest?.sports ? '바우처 등록 금액' : '자료 준비 중'}</span>
+              )}
             </h3>
             <ul className="grid grid-cols-4 gap-x-1 gap-y-3">
               {subjectsOf(g.id).map((s) => (

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DistrictData } from '../data/source';
 import { academy } from '../test/fixtures';
-import { buildMarket } from './realData';
+import { buildMarket, courseKey, findCourse, type Course, type RealAcademy } from './realData';
 import { cheaperAlternatives, EMPTY_FILTERS, marketForCourse, marketScopeName, parseQuery, searchAcademies } from './realSearch';
 
 describe('parseQuery', () => {
@@ -145,3 +145,43 @@ describe('searchAcademies', () => {
     expect(marketScopeName(m!.row, 'live')).toBe('받은 지역 전체');
   });
 });
+
+describe('체육시설 (검토에서 나온 문제)', () => {
+  const sport = (name: string, price: number, extra: Partial<Course> = {}): RealAcademy => ({
+    ...academy({ ACA_NM: name }),
+    id: `kv-${name}`,
+    kind: '체육시설',
+    source: 'voucher',
+    courses: [{ name: '검도', price, subjectId: 'kendo', ages: ['elementary'], ...extra }],
+    subjects: ['kendo'],
+  });
+
+  it('더 저렴한 곳에 바우처 한도 금액을 넣지 않고, 한도 금액을 기준으로도 찾지 않는다', () => {
+    const me = sport('나검도', 190000);
+    const capped = sport('한도검도', 105000, { voucherCap: true });
+    const cheaper = sport('싼검도', 150000);
+    const data = { academies: [me, capped, cheaper], unknownDistrict: [] } as unknown as DistrictData;
+    expect(cheaperAlternatives(data, me, me.courses[0]).map((x) => x.academy.name)).toEqual(['싼검도']);
+    expect(cheaperAlternatives(data, capped, capped.courses[0])).toEqual([]);
+  });
+
+  it('학원·교습소 종류 필터가 체육시설을 숨기지 않는다', () => {
+    const data = { academies: [sport('나검도', 150000)], unknownDistrict: [], sido: '서울', sigungu: '강남구' } as unknown as DistrictData;
+    const hits = searchAcademies(data, { ...EMPTY_FILTERS, subject: 'kendo', kind: '교습소' }, [], 'price');
+    expect(hits).toHaveLength(1);
+  });
+
+  it('체육 강좌 키에는 종목이 붙어 같은 이름·금액의 다른 종목을 고를 수 있다', () => {
+    const courses: Course[] = [
+      { name: '요가·필라테스', price: 100000, subjectId: 'pilates', ages: [] },
+      { name: '요가·필라테스', price: 100000, subjectId: 'taekwondo', ages: [] },
+    ];
+    expect(courseKey(courses[1])).toBe('요가·필라테스|100000|taekwondo');
+    expect(findCourse(courses, courseKey(courses[1]))).toBe(courses[1]);
+    // 예전 이름|금액 링크도 찾는다
+    expect(findCourse(courses, '요가·필라테스|100000')).toBe(courses[0]);
+    // 교육청 과정 키는 그대로
+    expect(courseKey({ name: '중등수학', price: 300000, subjectId: 'math' })).toBe('중등수학|300000');
+  });
+});
+

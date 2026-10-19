@@ -11,12 +11,13 @@
 // 개인정보가 될 수 있는 값(대표자명·대표자 전화·강사명·시설 관리자 전화)은 받자마자 버린다.
 // 인증키가 없으면 아무것도 하지 않고 끝낸다. 받다가 실패하면 오류로 끝나며, 교육청 자료 배포는 막지 않는다.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rawDir = join(root, '.sports-raw');
+const tmpDir = join(root, '.sports-raw.tmp');
 
 type Row = Record<string, string>;
 
@@ -213,7 +214,7 @@ function summarize(id: Dataset['id'], rows: Row[]) {
 async function main() {
   const key = normalizeKey(process.env.DATA_GO_KR_KEY ?? '');
   if (!key) {
-    console.log('DATA_GO_KR_KEY 가 없어 체육 자료를 받지 않습니다.');
+    console.log('::warning::DATA_GO_KR_KEY 가 없어 체육 자료를 새로 받지 않습니다. (보관해 둔 원자료가 있으면 그것을 씁니다)');
     return;
   }
   const fetchedAt = new Date().toISOString();
@@ -229,11 +230,20 @@ async function main() {
     data.set(ds.id, sanitize(r.rows, ds.keep));
     results.push({ id: ds.id, name: ds.name, total: r.total, count: r.rows.length, keys: r.keys });
   }
+  // 임시 폴더에 다 쓴 뒤(meta.json 은 마지막) 한 번에 바꿔 끼운다 → 중간에 실패해도 지난 원자료가 남는다
+  rmSync(tmpDir, { recursive: true, force: true });
+  mkdirSync(tmpDir, { recursive: true });
+  for (const [id, rows] of data) writeFileSync(join(tmpDir, `${id}.json`), JSON.stringify(rows));
+  writeFileSync(join(tmpDir, 'meta.json'), JSON.stringify({ fetchedAt, datasets: results }, null, 1));
   rmSync(rawDir, { recursive: true, force: true });
-  mkdirSync(rawDir, { recursive: true });
-  writeFileSync(join(rawDir, 'meta.json'), JSON.stringify({ fetchedAt, datasets: results }, null, 1));
-  for (const [id, rows] of data) writeFileSync(join(rawDir, `${id}.json`), JSON.stringify(rows));
+  renameSync(tmpDir, rawDir);
+  markFetched();
   console.log(`완료: ${results.map((r) => `${r.name} ${r.count.toLocaleString()}건`).join(' · ')}`);
+}
+
+/** GitHub Actions 에 '새로 받음'을 알린다 (보관·업로드 단계는 이때만 돈다) */
+function markFetched() {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'fetched=true\n');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

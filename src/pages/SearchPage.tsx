@@ -67,7 +67,7 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
   const stats = summarize(prices);
   const region = { sido: data.sido, sigungu: data.sigungu };
   // 시세가 늦게 오면 정렬·배지가 바뀌어 보이므로 다 받은 뒤에 보여 준다
-  if (market.loading) return <LoadingState message="교습비 시세를 불러오는 중…" />;
+  if (market.loading) return <LoadingState message="시세를 불러오는 중…" />;
   if (market.error) return <ErrorState message={market.error} onRetry={() => window.location.reload()} />;
 
   return (
@@ -120,8 +120,8 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
         <EmptyState
           title="조건에 맞는 곳이 없어요"
           desc={
-            filters.subject || filters.age || filters.text
-              ? '과목·대상·검색어를 바꿔 보세요. 금액을 공개하지 않은 곳은 ‘금액 공개된 곳만’을 끄면 보여요.'
+            filters.subject || filters.age || filters.text || filters.kind
+              ? '과목·대상·종류·검색어를 바꿔 보세요. 금액을 공개하지 않은 곳은 ‘금액 공개된 곳만’을 끄면 보여요.'
               : '이 지역에는 교육청에 등록된 학원·교습소가 없어요.'
           }
         />
@@ -145,25 +145,40 @@ function Results({ data, filters, sort, onSort }: { data: DistrictData; filters:
   );
 }
 
-function Filters({ idPrefix, filters, update, showUnknown }: { idPrefix: string; filters: SearchFilters; update: (p: Record<string, string | null>) => void; showUnknown: boolean }) {
+function Filters({
+  idPrefix,
+  filters,
+  update,
+  showUnknown,
+  sports,
+}: {
+  idPrefix: string;
+  filters: SearchFilters;
+  update: (p: Record<string, string | null>) => void;
+  showUnknown: boolean;
+  /** 체육 종목을 고르면 학원·교습소 구분은 쓰지 않는다 */
+  sports: boolean;
+}) {
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <span className="label">종류</span>
-        <Segmented
-          ariaLabel="학원 종류"
-          value={filters.kind || 'all'}
-          options={[
-            { id: 'all', label: '전체' },
-            { id: '학원', label: '학원' },
-            { id: '교습소', label: '교습소' },
-          ]}
-          onChange={(v) => update({ kind: v === 'all' ? null : v })}
-        />
-      </div>
+      {!sports && (
+        <div>
+          <span className="label">종류</span>
+          <Segmented
+            ariaLabel="학원 종류"
+            value={filters.kind || 'all'}
+            options={[
+              { id: 'all', label: '전체' },
+              { id: '학원', label: '학원' },
+              { id: '교습소', label: '교습소' },
+            ]}
+            onChange={(v) => update({ kind: v === 'all' ? null : v })}
+          />
+        </div>
+      )}
       <Toggle id={`${idPrefix}-priced`} checked={filters.pricedOnly} onChange={(v) => update({ priced: v ? '1' : null })} label="금액 공개된 곳만" desc="교육청 신고 교습비나 스포츠강좌이용권 강좌 금액이 있는 곳" />
       {showUnknown && (
-        <Toggle id={`${idPrefix}-unk`} checked={filters.includeUnknown} onChange={(v) => update({ unk: v ? null : '0' })} label="구 미상 학원 포함" desc="주소에 구가 없어 어느 구인지 모르는 같은 시 학원" />
+        <Toggle id={`${idPrefix}-unk`} checked={filters.includeUnknown} onChange={(v) => update({ unk: v ? null : '0' })} label="구 미상 포함" desc="주소에 구가 없어 어느 구인지 모르는 같은 시의 곳" />
       )}
     </div>
   );
@@ -197,7 +212,8 @@ export function SearchPage() {
   };
   const memoFilters = useMemo(() => filters, [params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const showUnknown = (district.data?.unknownDistrict.length ?? 0) > 0;
-  const activeFilters = Number(Boolean(filters.kind)) + Number(filters.pricedOnly) + Number(!filters.includeUnknown && showUnknown);
+  const sportsSubject = Boolean(filters.subject && SUBJECT_MAP[filters.subject] && !SUBJECT_MAP[filters.subject].inNeis);
+  const activeFilters = Number(Boolean(filters.kind) && !sportsSubject) + Number(filters.pricedOnly) + Number(!filters.includeUnknown && showUnknown);
   const searchForm = (id: string, withLabel: boolean) => (
     <form
       role="search"
@@ -260,7 +276,7 @@ export function SearchPage() {
         <aside className="card hidden flex-col gap-4 p-4 lg:sticky lg:top-20 lg:flex lg:w-72 lg:shrink-0">
           <RegionPicker idPrefix="search" sido={region?.sido ?? ''} sigungu={region?.sigungu ?? ''} allowAll={false} onChange={(sido, sigungu) => update({ sido, sigungu })} />
           {searchForm('search-q', true)}
-          <Filters idPrefix="side" filters={filters} update={update} showUnknown={showUnknown} />
+          <Filters idPrefix="side" filters={filters} update={update} showUnknown={showUnknown} sports={sportsSubject} />
         </aside>
 
         <div className="min-w-0 flex-1">
@@ -328,7 +344,7 @@ export function SearchPage() {
           </button>
         }
       >
-        <Filters idPrefix="sheet" filters={filters} update={update} showUnknown={showUnknown} />
+        <Filters idPrefix="sheet" filters={filters} update={update} showUnknown={showUnknown} sports={sportsSubject} />
       </Sheet>
     </div>
   );

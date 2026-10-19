@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HBarList } from '../charts/HBarList';
 import { Histogram } from '../charts/Histogram';
 import { RangeStrip } from '../charts/RangeStrip';
-import { DataStamp, ErrorState, LoadingState, NoDataState, SportsSourceNote } from '../components/DataState';
+import { DataStamp, ErrorState, LoadingState, NoDataState, SportsNotice, SportsSourceNote } from '../components/DataState';
 import { RegionPicker } from '../components/RegionPicker';
 import { EmptyState, PageHeader, PriceLevelBadge, Section, Segmented, SubjectTile } from '../components/ui';
 import { AGE_LABELS, AGE_ORDER, SUBJECT_MAP, SUBJECTS } from '../data/categories';
@@ -142,6 +142,8 @@ export function MarketPage() {
           <NoDataState />
         ) : !region ? (
           <EmptyState title="지역을 골라 주세요" desc="시·도와 시·군·구를 고르면 그 지역 교습비 시세를 보여 드려요." />
+        ) : sportsSelected && !main && district.data && !district.data.sports ? (
+          <SportsNotice subjectName={subjectName} />
         ) : !main ? (
           <EmptyState
             title={`${region.sigungu} ${condition} 시세를 낼 수 없어요`}

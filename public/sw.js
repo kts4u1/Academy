@@ -69,7 +69,7 @@ async function networkFirst(request, cacheName, fallbackUrl) {
   const cache = await caches.open(cacheName);
   try {
     const res = await fetch(request);
-    if (res.ok) await cache.put(request, res.clone());
+    if (res.ok) await cache.put(request, res.clone()).catch(() => undefined);
     return res;
   } catch (err) {
     const hit = (await cache.match(request)) || (fallbackUrl && (await cache.match(fallbackUrl)));
@@ -84,8 +84,13 @@ async function cacheFirst(request, cacheName, maxEntries) {
   if (hit) return hit;
   const res = await fetch(request);
   if (res.ok) {
-    await cache.put(request, res.clone());
-    if (maxEntries) await trim(cache, maxEntries);
+    // 저장 공간이 모자라 보관에 실패해도 받은 응답은 그대로 쓴다
+    try {
+      await cache.put(request, res.clone());
+      if (maxEntries) await trim(cache, maxEntries);
+    } catch {
+      // 무시
+    }
   }
   return res;
 }
@@ -95,7 +100,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const hit = await cache.match(request);
   const refresh = fetch(request)
     .then((res) => {
-      if (res.ok || res.type === 'opaque') cache.put(request, res.clone());
+      if (res.ok || res.type === 'opaque') cache.put(request, res.clone()).catch(() => undefined);
       return res;
     })
     .catch(() => hit);

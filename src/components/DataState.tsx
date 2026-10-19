@@ -114,7 +114,6 @@ export function DataStamp({ data, onReload, error, sports = false }: { data: Dis
   );
 }
 
-/** 체육 과목: 교육청 자료에 없다는 안내 */
 /** 체육 종목 결과 위에 보여 주는 출처 안내 */
 export function SportsSourceNote({ voucherCap, fetchedAt }: { voucherCap: number | null; fetchedAt: string }) {
   return (
@@ -129,6 +128,7 @@ export function SportsSourceNote({ voucherCap, fetchedAt }: { voucherCap: number
   );
 }
 
+/** 체육 종목: 체육시설 자료가 없을 때 (내 인증키로 받는 경우·주간 업데이트에서 받지 못한 경우) */
 export function SportsNotice({ subjectName }: { subjectName: string }) {
   return (
     <div className="card p-5">

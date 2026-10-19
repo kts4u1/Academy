@@ -50,7 +50,7 @@ jobs:
         run: echo "week=$(TZ=Asia/Seoul date +%G-%V)" >> "$GITHUB_OUTPUT"
 
       # 체육시설·스포츠강좌 (국민체육진흥공단, 공공데이터포털 인증키 DATA_GO_KR_KEY)
-      # 이번 주에 받은 원자료가 있으면(push) 그것을, 없거나 정기·수동 실행이면 새로 받는다.
+      # 정기·수동 실행은 새로 받는다. 코드만 바뀐 push 는 가장 최근에 받아 둔 원자료를 다시 가공한다(없을 때만 받는다).
       # 받다가 실패하면 가장 최근에 받아 둔 원자료를 쓰고, 그것도 없으면 체육 자료 없이 배포한다.
       - name: 체육 원자료 불러오기
         id: sports-cache
@@ -64,7 +64,7 @@ jobs:
 
       - name: 체육 자료 받기
         id: sports
-        if: github.event_name != 'push' || !startsWith(steps.sports-cache.outputs.cache-matched-key, format('sports-raw-{0}-', steps.week.outputs.week))
+        if: github.event_name != 'push' || steps.sports-cache.outputs.cache-matched-key == ''
         continue-on-error: true
         timeout-minutes: 30
         env:
@@ -72,14 +72,14 @@ jobs:
         run: npm run sports:fetch
 
       - name: 받은 체육 원자료 보관
-        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
+        if: steps.sports.outputs.fetched == 'true'
         uses: actions/cache/save@v4
         with:
           path: .sports-raw
           key: sports-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
 
       - name: 체육 원자료 올리기 (점검용, 3일 보관)
-        if: steps.sports.outcome == 'success' && hashFiles('.sports-raw/meta.json') != ''
+        if: steps.sports.outputs.fetched == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: sports-raw

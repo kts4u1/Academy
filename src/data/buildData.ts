@@ -3,9 +3,9 @@
 
 import { stableName } from '../lib/hash';
 import { toNeisAcademy, type NeisRawRow } from '../lib/neis';
-import { buildMarket, toRealAcademy, type RealAcademy } from '../lib/realData';
+import { buildMarket, courseKey, toRealAcademy, type RealAcademy } from '../lib/realData';
 import type { DataManifest } from './manifest';
-import { buildSports, type SportsSnapshot } from './sports';
+import { buildSports, type SportsSnapshot, type SportsSummary } from './sports';
 import { DISTRICTS, EDU_OFFICES } from './regions';
 
 /** 원자료 묶음: API 든 전국 파일이든 같은 모양으로 보관하고 가공한다 */
@@ -21,12 +21,33 @@ export interface RawSnapshot {
 
 export { stableName };
 
+/** 체육시설 요약은 실제로 파일에 들어간 것(중복 합치기 뒤)으로 센다 */
+function sportsSummary(base: SportsSummary, published: RealAcademy[]): SportsSummary {
+  const voucher = published.filter((a) => a.source === 'voucher');
+  return {
+    ...base,
+    priced: voucher.length,
+    courses: voucher.reduce((s, a) => s + a.courses.length, 0),
+    listed: published.filter((a) => a.source === 'facility').length,
+  };
+}
+
 /** 같은 학원이 두 교육청에 함께 올라 있는 경우(예: 군위군 경북→대구 편입) 한 번만 남긴다 */
 export function dedupeSamePlace(list: RealAcademy[]): RealAcademy[] {
   const best = new Map<string, RealAcademy>();
   for (const a of list) {
-    const k = `${a.name.replace(/\s/g, '')}|${a.address.replace(/\s/g, '')}`;
+    const k = `${a.source ?? ''}|${a.name.replace(/\s/g, '')}|${a.address.replace(/\s/g, '')}`;
     const prev = best.get(k);
+    if (prev && prev.source === 'voucher' && a.source === 'voucher') {
+      // 한 시설이 사업자번호를 바꿔 두 번 등록된 경우: 강좌를 합친다
+      const keys = new Set(prev.courses.map(courseKey));
+      best.set(k, {
+        ...prev,
+        courses: [...prev.courses, ...a.courses.filter((c) => !keys.has(courseKey(c)))],
+        subjects: Array.from(new Set([...prev.subjects, ...a.subjects])),
+      });
+      continue;
+    }
     if (!prev || a.courses.length > prev.courses.length || (a.courses.length === prev.courses.length && a.loadedAt > prev.loadedAt)) best.set(k, a);
   }
   return Array.from(best.values());
@@ -125,7 +146,7 @@ export function buildOutput(snap: RawSnapshot, sports?: SportsSnapshot | null): 
     offices: officeStats,
     districts,
     buckets,
-    ...(sportsBuilt ? { sports: sportsBuilt.summary } : {}),
+    ...(sportsBuilt ? { sports: sportsSummary(sportsBuilt.summary, all) } : {}),
     versions,
   };
   files.set('manifest.json', manifest);

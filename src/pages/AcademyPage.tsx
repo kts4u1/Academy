@@ -12,7 +12,7 @@ import { useDistrictData, useMarket } from '../hooks';
 import { dotDate, manwon, shortMan, signedPercent, unitPrice } from '../lib/format';
 import { academyPrices, courseKey, findCourse, isComparableCourse, positionOf, pricePerSession, type Course, type MarketRow, type RealAcademy } from '../lib/realData';
 import { cheaperAlternatives, marketForCourse, marketScopeName } from '../lib/realSearch';
-import { isSports, priceName, sourceShort, VOUCHER_CAP_NOTE } from '../lib/sourceText';
+import { isSports, loadedOf, priceName, sourceShort, VOUCHER_CAP_NOTE } from '../lib/sourceText';
 import { useApp } from '../store/AppContext';
 
 /** 익명 처리된 번호(02-0000-0000 등)는 전화 걸기를 숨긴다 */
@@ -148,7 +148,7 @@ function Detail({ data, id, courseParam }: { data: DistrictData; id: string; cou
         desc="폐원·휴원했거나 등록 정보가 바뀌었을 수 있어요. 같은 지역에서 다시 검색해 보세요."
         action={
           <Link to={`/search?sido=${encodeURIComponent(data.sido)}&sigungu=${encodeURIComponent(data.sigungu)}`} className="btn-ghost">
-            {data.sigungu} 학원 찾기
+            {data.sigungu}에서 다시 찾기
           </Link>
         }
       />
@@ -303,7 +303,7 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
         <div className="flex gap-2">
           <dt className="w-16 shrink-0 text-ink-3">자료 갱신</dt>
           <dd>
-            {academy.loadedAt ? dotDate(academy.loadedAt) : '-'} ({sourceShort(academy.source)})
+            {loadedOf(academy, data) ? dotDate(loadedOf(academy, data)) : '-'} ({sourceShort(academy.source)})
           </dd>
         </div>
       </dl>
@@ -341,9 +341,9 @@ function AcademyView({ data, academy, courseParam }: { data: DistrictData; acade
       </Section>
 
       {comparable && (
-        <Section id="market" title="시세와 비교" desc={match ? `${marketLabel(match.row, mode)} ${match.row.academies}곳 기준 (학원마다 대표 금액 하나)` : undefined}>
+        <Section id="market" title="시세와 비교" desc={match ? `${marketLabel(match.row, mode)} ${match.row.academies}곳 기준 (곳마다 대표 금액 하나)` : undefined}>
           {market.loading ? (
-            <LoadingState message="교습비 시세를 불러오는 중…" />
+            <LoadingState message="시세를 불러오는 중…" />
           ) : market.error ? (
             <ErrorState message={market.error} />
           ) : match && pos ? (

@@ -1,6 +1,7 @@
 // 교육청(NEIS) 학원교습소정보 → 앱 데이터
 // 매주 자동 업데이트 스크립트(scripts/update-data.ts)와 브라우저의 '내 인증키로 바로 받기'가 같은 규칙을 쓴다.
 
+import { SUBJECT_MAP } from '../data/categories';
 import { resolveNeisDistrict } from '../data/regions';
 import type { AgeGroup } from '../types';
 import type { NeisAcademy } from './neis';
@@ -112,14 +113,19 @@ export function toRealAcademy(row: NeisAcademy, sido: string): RealAcademy {
 }
 
 /** 학원 안에서 과정을 구별하는 키. 같은 이름의 과정이 금액만 다르게 여러 개 있을 수 있다 (이름·금액 쌍은 하나뿐) */
-export function courseKey(c: Pick<Course, 'name' | 'price'>): string {
-  return `${c.name}|${c.price}`;
+/**
+ * 과정 키: 이름|금액. 체육 강좌는 같은 이름·금액이 종목만 다르게 있을 수 있어(요가·필라테스 등) 종목을 붙인다.
+ * 교육청 과정은 예전 링크·비교함과 맞도록 이름|금액 그대로 둔다.
+ */
+export function courseKey(c: Pick<Course, 'name' | 'price'> & { subjectId?: string | null }): string {
+  const sports = c.subjectId ? SUBJECT_MAP[c.subjectId]?.group === 'sports' : false;
+  return sports ? `${c.name}|${c.price}|${c.subjectId}` : `${c.name}|${c.price}`;
 }
 
-/** 키(또는 예전 링크의 과정 이름)로 과정 찾기 */
+/** 키(또는 예전 링크의 이름|금액·과정 이름)로 과정 찾기 */
 export function findCourse(courses: Course[], key: string | null | undefined): Course | undefined {
   if (!key) return undefined;
-  return courses.find((c) => courseKey(c) === key) ?? courses.find((c) => c.name === key);
+  return courses.find((c) => courseKey(c) === key) ?? courses.find((c) => `${c.name}|${c.price}` === key) ?? courses.find((c) => c.name === key);
 }
 
 /** 시세 비교에 쓸 수 있는 과정: 과목을 알고, 월 교습비로 보이며, 1:1 이 아닌 것 */

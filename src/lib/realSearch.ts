@@ -187,9 +187,9 @@ export const EMPTY_FILTERS: SearchFilters = { text: '', subject: '', age: '', ki
 export type SortKey = 'value' | 'price' | 'price_desc' | 'name';
 
 export const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: 'price', label: '교습비 낮은 순' },
+  { id: 'price', label: '금액 낮은 순' },
   { id: 'value', label: '시세 대비 저렴한 순' },
-  { id: 'price_desc', label: '교습비 높은 순' },
+  { id: 'price_desc', label: '금액 높은 순' },
   { id: 'name', label: '이름순' },
 ];
 
@@ -221,7 +221,8 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
   for (const a of pool) {
     // 체육시설은 체육 종목을 고르거나 이름으로 찾을 때만 보여 준다 (학원 목록에 섞이지 않게)
     if (a.source && !filters.subject && tokens.length === 0) continue;
-    if (filters.kind && a.kind !== filters.kind) continue;
+    // 학원·교습소 구분은 교육청 자료에만 있다
+    if (filters.kind && !a.source && a.kind !== filters.kind) continue;
     if (!textMatches(a, tokens)) continue;
     const comparable = a.courses.filter(isComparableCourse);
     const courses = comparable.filter((c) => courseMatches(c, filters.subject || null, age)).sort((x, y) => x.price - y.price);
@@ -260,12 +261,13 @@ export function searchAcademies(data: DistrictData, filters: SearchFilters, rows
  * 대상이 정해진 과정이면 대상이 겹치는 과정만 본다 (고등반을 유아반 금액과 견주지 않게).
  */
 export function cheaperAlternatives(data: DistrictData, academy: RealAcademy, course: Course, limit = 5): { academy: RealAcademy; course: Course }[] {
-  if (!course.subjectId) return [];
+  // 바우처 한도에 맞춘 금액은 비교에서 빼므로, 그 금액을 기준으로도 후보로도 쓰지 않는다
+  if (!course.subjectId || course.voucherCap) return [];
   const sameAge = (x: Course) => course.ages.length === 0 || x.ages.some((a) => course.ages.includes(a));
   const out: { academy: RealAcademy; course: Course }[] = [];
   for (const a of [...data.academies, ...data.unknownDistrict]) {
     if (a.id === academy.id) continue;
-    const c = a.courses.filter((x) => courseMatches(x, course.subjectId) && sameAge(x) && x.price < course.price).sort((x, y) => x.price - y.price)[0];
+    const c = a.courses.filter((x) => courseMatches(x, course.subjectId) && !x.voucherCap && sameAge(x) && x.price < course.price).sort((x, y) => x.price - y.price)[0];
     if (c) out.push({ academy: a, course: c });
   }
   return out.sort((x, y) => x.course.price - y.course.price).slice(0, limit);

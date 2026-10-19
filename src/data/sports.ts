@@ -117,7 +117,8 @@ const MULTI_MONTH_RE = /(?:[2-9]|1[0-2])\s*개월|분기|학기|당겨\s*쓰기/
 /** '10회권', '12회' 같은 회차권 ('주3회', '주 5회권', '월 4회'는 월 수강료) */
 const PASS_RE = /(?<!주\s*)\d+\s*회\s*권|(?<![주월]\s*)[1-9]\d\s*회/;
 const ADDON_RE = /추가\s*(결제|금|요금|비)?|대여료|장비\s*대여/;
-const PRIVATE_RE = /1\s*(:|대)\s*1|개인\s*(레슨|지도|강습|수업|운동|PT)|\bPT\b|피티|퍼스널|프라이빗/i;
+/** 1:1·개인 레슨 ('1:10', '1:15' 같은 정원 표기나 '그룹PT'는 아님) */
+const PRIVATE_RE = /(?<![\d:])1\s*(:|대)\s*1(?![\d])|개인\s*(레슨|지도|강습|수업|운동|PT)|(?<!그룹\s*|단체\s*|소그룹\s*)(\bPT\b|피티)|퍼스널|프라이빗/i;
 
 export const MIN_SPORTS_PRICE = 10000;
 const YOUTH_AGES: AgeGroup[] = ['preschool', 'elementary', 'middle', 'high'];
@@ -164,7 +165,6 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
     if (list) list.push(c);
     else byFacility.set(key, [c]);
   }
-  const loadedAt = snap.fetchedAt.slice(0, 10);
   const out: RealAcademy[] = [];
   for (const f of snap.facilities) {
     const rows = byFacility.get(`${f.brno}|${f.facil_sn}`);
@@ -173,7 +173,8 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
     const detail = decodeEntities(f.faci_daddr ?? '');
     const road = decodeEntities(f.road_addr ?? '');
     const place = locate(road, detail, { sido: f.city_nm, sigungu: f.local_nm });
-    if (!name || !place) continue;
+    // 이름 대신 사업자번호 같은 숫자만 적힌 곳은 넣지 않는다
+    if (!name || /^[\d\s-]+$/.test(name) || !place) continue;
     const facilitySubject = VOUCHER_ITEM_SUBJECT[f.main_event_nm] ?? subjectFromName(name);
     const seen = new Set<string>();
     const courses: Course[] = [];
@@ -218,7 +219,8 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
       category: decodeEntities(f.main_event_nm ?? ''),
       capacity: null,
       established: '',
-      loadedAt,
+      // 받은 날짜는 manifest.sports.fetchedAt 에만 둔다 (매주 모든 파일 내용이 바뀌어 휴대폰 보관본을 다시 받지 않게)
+      loadedAt: '',
       courses,
       subjects: subjectsOf(courses, [facilitySubject]),
     });
@@ -281,7 +283,7 @@ export function facilityAcademies(snap: SportsSnapshot): RealAcademy[] {
     const emd = r.addr_emd_nm ? `(${r.addr_emd_nm})` : '';
     const hint = { sido: r.cp_nm || r.addr_ctpv_nm, sigungu: r.cpb_nm || r.addr_cpb_nm };
     const place = locate(road, emd) ?? locate(jibun, emd, hint);
-    if (!name || !place) continue;
+    if (!name || /^[\d\s-]+$/.test(name) || !place) continue;
     const detail = decodeEntities(r.faci_road_daddr ?? r.faci_daddr ?? '');
     const base = road || jibun;
     out.push({

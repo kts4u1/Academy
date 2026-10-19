@@ -8,12 +8,14 @@
 //   facilities  스포츠강좌이용권 등록시설 정보 (15107783): 시설명·도로명주소·주종목 (강좌와 brno+facil_sn 으로 묶는다)
 //   national    전국체육시설 정보 (15113986): 신고·등록 체육시설업과 공공체육시설 목록 (가격 없음)
 //
-// 개인정보가 될 수 있는 값(대표자명·대표자 전화·강사명·시설 관리자 전화)은 받자마자 버린다.
+// 개인정보가 될 수 있는 값(대표자명·대표자 전화·강사명·시설 관리자 전화·강좌 설명)은 받자마자 버리고,
+// 가린 이름·전화 뒷자리가 적힌 개인 결제창 강좌는 통째로 버린다 (src/lib/privacy.ts).
 // 인증키가 없으면 아무것도 하지 않고 끝낸다. 받다가 실패하면 오류로 끝나며, 교육청 자료 배포는 막지 않는다.
 
 import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isPersonalSlot, scrubContacts } from '../src/lib/privacy';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rawDir = join(root, '.sports-raw');
@@ -34,7 +36,8 @@ const DATASETS: Dataset[] = [
     id: 'courses',
     name: '스포츠강좌이용권 등록강좌 정보',
     url: 'https://apis.data.go.kr/B551014/SRVC_OD_API_FACIL_COURSE/todz_api_facil_course_i',
-    keep: ['brno', 'facil_sn', 'course_no', 'item_cd', 'item_nm', 'course_nm', 'start_tm', 'equip_tm', 'lectr_weekday_val', 'course_seta_desc_cn', 'settl_amt'],
+    // 강좌 설명·시간·강사는 쓰지 않아 받지 않는다 (개인정보가 섞일 수 있다)
+    keep: ['brno', 'facil_sn', 'item_cd', 'item_nm', 'course_nm', 'settl_amt'],
   },
   {
     id: 'facilities',
@@ -138,23 +141,24 @@ async function fetchPage(ds: Dataset, key: string, pageNo: number): Promise<{ to
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+/** 이름 글자에 전화번호가 적힌 경우가 있어 지운다 */
+const TEXT_FIELDS = new Set(['course_nm', 'facil_nm', 'faci_nm']);
+
+/**
+ * 남길 필드만 남기고, 수강생 한 명을 위한 개인 결제창 강좌(가린 이름·전화 뒷자리)는 통째로 버린다.
+ */
 export function sanitize(rows: Row[], keep: string[]): Row[] {
   const allow = new Set(keep);
-  return rows.map((r) => {
-    const out: Row = {};
-    for (const [k, v] of Object.entries(r)) if (allow.has(k)) out[k] = k === 'course_seta_desc_cn' ? scrubContacts(v) : v;
-    return out;
-  });
+  return rows
+    .filter((r) => !isPersonalSlot(r.course_nm ?? ''))
+    .map((r) => {
+      const out: Row = {};
+      for (const [k, v] of Object.entries(r)) if (allow.has(k)) out[k] = TEXT_FIELDS.has(k) ? scrubContacts(v) : v;
+      return out;
+    });
 }
 
-/** 강좌 설명에 적힌 전화번호·이메일은 지운다 */
-export function scrubContacts(text: string): string {
-  return text
-    .replace(/0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g, '')
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
+export { scrubContacts };
 
 async function fetchAll(ds: Dataset, key: string): Promise<{ total: number; rows: Row[]; keys: string[] }> {
   const first = await fetchPage(ds, key, 1);

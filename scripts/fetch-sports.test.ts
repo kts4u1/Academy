@@ -27,9 +27,33 @@ describe('체육 자료 받기', () => {
     expect(normalizeKey(' abc+def== ')).toBe('abc+def==');
   });
 
-  it('개인정보 필드를 버리고 강좌 설명의 연락처를 지운다', () => {
-    const [row] = sanitize([{ brno: '1', pres_nm: '홍길동', res_telno: '010-1234-5678', course_seta_desc_cn: '문의 010-1234-5678 a@b.com 주3회' }], ['brno', 'course_seta_desc_cn']);
-    expect(row).toEqual({ brno: '1', course_seta_desc_cn: '문의 주3회' });
+  it('개인정보 필드를 버리고 이름 글자의 연락처를 지운다', () => {
+    const [row] = sanitize([{ brno: '1', pres_nm: '홍길동', res_telno: '010-1234-5678', course_nm: '헬스 한달(문의 사항:010-3451-1662)' }], ['brno', 'course_nm']);
+    expect(row).toEqual({ brno: '1', course_nm: '헬스 한달(문의 사항:)' });
     expect(scrubContacts('전화 02)123-4567')).toBe('전화');
+    expect(scrubContacts('010 - 1234 - 5678')).toBe('');
+    expect(scrubContacts('010. 1234. 5678')).toBe('');
+  });
+
+  it('가린 이름·전화 뒷자리가 적힌 개인 결제창 강좌는 통째로 버린다', () => {
+    const personal = [
+      '이*람(핸드폰뒤7909) 소수수영 개인결제창',
+      '김*현(8825)소수수영(화목)17시',
+      '김시*(8825)수영17시화목개인창',
+      '최ㅇ준 8월태권도결제창',
+      '개인결제(김*유)',
+      '[**은] 16/A 어린이수영 외1',
+      '[**현, **호] 15/S2 레이저사격',
+      '신○찬회원_16A 어린이수영',
+      '박시안회원_16B1 어린이수영',
+      '김○_16A 어린이수영',
+      '(배수＊)18/B1(화목)어린이 소그룹 수영레슨',
+      '김*온태권도교육비',
+      '김*채 회원님 주짓수 주2회 수업',
+      '체육 아동반(정*윤)',
+    ];
+    const kept = ['[유*초등부] 호신술 및 격투기', '성인주간반(화*목) 클라이밍강습', '어린이수영*주말자유', '연합반 수강(농구) *주2회*', '태권도줄넘기(2026)', '수영 신규회원 소개할인 (주2회)', '* 화목 저녁 성인발레 *'];
+    const rows = [...personal, ...kept].map((course_nm) => ({ course_nm }));
+    expect(sanitize(rows, ['course_nm']).map((r) => r.course_nm)).toEqual(kept);
   });
 });

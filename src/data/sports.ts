@@ -7,6 +7,7 @@
 // 그런 강좌는 목록에는 보여 주되 시세·비교에서는 뺀다(voucherCap). 한도의 2~3배(여러 달 치 결제)도 뺀다.
 
 import { stableName } from '../lib/hash';
+import { isPersonalSlot, scrubContacts } from '../lib/privacy';
 import { detectAges, detectSessionsPerWeek, isNonMonthlyCourseName } from '../lib/neisClassify';
 import type { Course, RealAcademy } from '../lib/realData';
 import type { AgeGroup } from '../types';
@@ -179,9 +180,10 @@ export function voucherAcademies(snap: SportsSnapshot, cap = detectVoucherCap(sn
     const seen = new Set<string>();
     const courses: Course[] = [];
     for (const r of rows) {
-      const courseName = decodeEntities(r.course_nm ?? '');
+      const courseName = scrubContacts(decodeEntities(r.course_nm ?? ''));
       const price = priceOf(r.settl_amt);
-      if (!courseName || price <= 0) continue;
+      // 수강생 한 명을 위한 개인 결제창(가린 이름·전화 뒷자리)은 싣지 않는다
+      if (!courseName || price <= 0 || isPersonalSlot(courseName)) continue;
       // 킥복싱은 법정 종목이 아니라 복싱·기타종목으로 등록되어 이름으로 가린다
       const byItem = VOUCHER_ITEM_SUBJECT[r.item_nm];
       const byName = subjectFromName(courseName);

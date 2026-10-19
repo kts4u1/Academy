@@ -262,3 +262,11 @@ describe('검토에서 나온 문제 고침', () => {
   });
 });
 
+describe('개인정보', () => {
+  it('개인 결제창 강좌는 시설 강좌 목록에 싣지 않는다', () => {
+    const f = facility();
+    const [a] = voucherAcademies(snap({ facilities: [f], courses: [course(f), course(f, { course_nm: '김*현(8825)소수수영(화목)17시', settl_amt: '120000' })] }), null);
+    expect(a.courses.map((c) => c.name)).toEqual(['태권도 주5회']);
+  });
+});
+

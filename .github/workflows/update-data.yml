@@ -78,15 +78,6 @@ jobs:
           path: .sports-raw
           key: sports-raw-${{ steps.week.outputs.week }}-${{ github.run_id }}
 
-      - name: 체육 원자료 올리기 (점검용, 3일 보관)
-        if: steps.sports.outputs.fetched == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sports-raw
-          path: .sports-raw
-          include-hidden-files: true
-          retention-days: 3
-
       # 교육청 원자료(.neis-raw)를 보관해 두고, 코드만 바뀐 push 는 이번 주(한국 시간)에 받은 원자료를 새 코드로 다시 가공한다
       - name: 이번 주 원자료 불러오기
         if: github.event_name == 'push'
